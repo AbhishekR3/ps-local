@@ -9,3 +9,7 @@ dist/
 # Codacy local tooling — keep on-machine, out of the public repo
 .codacy/
 .github/instructions/codacy.instructions.md
+
+
+# Nope not committing
+BACKLOG.md
