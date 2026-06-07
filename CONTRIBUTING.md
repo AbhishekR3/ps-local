@@ -86,8 +86,8 @@ A normal user terminal doesn't set this, so `npm start` works unmodified there.
 3. Open a PR. CI (`.github/workflows/test.yml`) runs on every PR and must pass:
    - **gitleaks** secret scan (full history) — never commit `helper/.env` or
      `helper/extension/data/config.json` (both gitignored)
-   - helper unit tests
-   - a server build + protocol smoke test
+   - helper unit tests (smoke + full suite + golden + edge cases)
+   - Codacy code-quality analysis (`.github/workflows/codacy.yml`; scope in `.codacy.yaml`)
 4. Keep commits scoped and write a clear description of what changed and why.
 
 ## Reporting issues

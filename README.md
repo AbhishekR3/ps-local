@@ -3,7 +3,11 @@
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
 [![deep-test](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml)
 [![upstream-canary](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/PROJECT_ID)](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+<!-- Codacy: after connecting the repo on codacy.com, replace PROJECT_ID above with the hash from
+     Codacy → repo Settings → Badge (otherwise the badge image renders broken). -->
 
 An Electron app that **automatically saves a rich battle log for every battle** — a raw protocol dump
 plus a human-readable, LLM-ready analysis — with zero per-battle action. It runs in one of two modes:
@@ -104,6 +108,11 @@ the end-to-end logging path writes a file (the C5 decoupling proof).
 
 If you intentionally change exporter formatting, refresh the golden:
 `node helper/test/golden.test.js --update`.
+
+**Code quality:** [Codacy](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard) analyzes every
+push (grade badge above); the `codacy` workflow also reports findings into the repo's **Security →
+Code scanning** tab. Analysis scope is set in [.codacy.yaml](.codacy.yaml) — `vendor/` (upstream
+submodules) and generated bundles are excluded.
 
 ## Updating to latest upstream
 

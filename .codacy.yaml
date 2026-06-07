@@ -1,0 +1,14 @@
+---
+# Repo-level Codacy configuration (read by both the Codacy GitHub App and the codacy-analysis-cli
+# action). The local CLI tooling under .codacy/ is separate and gitignored.
+#
+# CRITICAL: never analyze vendor/ — those are pristine upstream Pokémon Showdown submodules we never
+# source-edit; analyzing them would drown real findings in thousands of upstream issues. Same for
+# generated data bundles and build/output dirs.
+exclude_paths:
+  - 'vendor/**'
+  - '**/node_modules/**'
+  - 'helper/extension/data/**'   # generated Monte-Carlo data bundle
+  - 'dist/**'
+  - 'logs/**'
+  - '.codacy/**'
