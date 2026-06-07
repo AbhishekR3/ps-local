@@ -1,0 +1,38 @@
+name: codacy
+
+# Code-quality scan. The Codacy GitHub App analyzes pushes server-side (dashboard + grade badge);
+# this workflow additionally runs the Codacy Analysis CLI and feeds results into GitHub's Security →
+# Code scanning tab as SARIF. It is informational — it does NOT fail the build on findings
+# (max-allowed-issues is maxed), so it can be tightened into a gate later. No Codacy token required.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  codacy-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # NOTE: pinned to @master per Codacy's documented recipe. For reproducibility you can pin this
+      # to a release commit SHA (Codacy → repo Settings, or the action's releases page).
+      - name: Run Codacy Analysis CLI
+        uses: codacy/codacy-analysis-cli-action@master
+        with:
+          # Respects .codacy.yaml (excludes vendor/ etc.). Emit GitHub-compatible SARIF and never
+          # fail the job on issue count — this stage is advisory.
+          output: results.sarif
+          format: sarif
+          gh-code-scanning-compat: true
+          max-allowed-issues: 2147483647
+
+      - name: Upload SARIF to GitHub code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
