@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Random-Battle Helper</title>
+	<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+	<header>
+		<span id="format" class="format">Waiting for a battle…</span>
+		<button id="save-log-btn" title="Download battle log as .txt for LLM analysis" aria-label="Save log">⬇ Log</button>
+		<button id="close-btn" title="Close panel" aria-label="Close">✕</button>
+	</header>
+	<main id="content">
+		<p class="hint">Open or start a random battle on Pokémon Showdown. Opponent Pokémon and their predicted sets will appear here.</p>
+	</main>
+	<details id="help-footer">
+		<summary>Having issues?</summary>
+		<ol>
+			<li>Reload extension: <code>chrome://extensions</code> → click ↺</li>
+			<li>Hard-reload this tab: <kbd>Cmd-Shift-R</kbd></li>
+			<li>Reopen the panel via the toolbar icon</li>
+		</ol>
+	</details>
+	<script type="module" src="panel.js"></script>
+</body>
+</html>

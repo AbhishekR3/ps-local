@@ -1,0 +1,12 @@
+{
+  "name": "ps-battle-helper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Companion browser extension that shows full breakdowns of Pokemon in your live Pokemon Showdown random battles.",
+  "engines": { "node": ">=22.6.0" },
+  "scripts": {
+    "build-data": "node build-data.js",
+    "test": "node --test"
+  }
+}

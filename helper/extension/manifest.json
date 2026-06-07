@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "PS Random-Battle Helper",
+  "version": "0.1.0",
+  "description": "Shows full breakdowns (stats, abilities, predicted movesets) of Pokemon in your live Pokemon Showdown random battles.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://play.pokemonshowdown.com/*", "http://localhost:8080/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Toggle Random-Battle Helper" },
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "data/tera/*.json", "data/stats/*.json"],
+      "matches": ["https://play.pokemonshowdown.com/*", "http://localhost:8080/*"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "http://localhost:8080/*"],
+      "js": ["injected.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "http://localhost:8080/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}
