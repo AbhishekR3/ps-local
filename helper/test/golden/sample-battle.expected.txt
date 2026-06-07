@@ -1,0 +1,134 @@
+========================================================================
+POKEMON SHOWDOWN BATTLE LOG
+========================================================================
+Format:    [Gen 9] Random Battle
+Gen:       9
+Game type: singles
+Players:   PlayerOne (you) vs PlayerTwo (opponent)
+Turns:     3
+Result:    YOU WON
+Generated: <NORMALIZED>
+
+========================================================================
+YOUR TEAM  (full details from request data)
+========================================================================
+  Garchomp  L50 M  |  HP: 100%  |  Item: lifeorb  |  Ability: roughskin  |  Tera: ?
+    Stats: HP 356 / Atk 200 / Def 150 / SpA 120 / SpD 130 / Spe 180
+    Moves: Earthquake (Ground · Physical · 100 BP)  |  Dragon Claw (Dragon · Physical · 80 BP)  |  Swords Dance (Normal · Status)  |  Fire Fang (Fire · Physical · 65 BP)
+
+========================================================================
+OPPONENT TEAM  (PlayerTwo — revealed during battle)
+========================================================================
+  Gengar L50  |  Item: ?  |  Ability: ?  |  FAINTED
+    Moves seen: Shadow Ball (Ghost · Special · 80 BP)  |  Sludge Bomb (Poison · Special · 90 BP)
+
+========================================================================
+FIELD STATE AT END OF BATTLE
+========================================================================
+Weather:      None
+Terrain:      None
+Field effects: None
+Your side (PlayerOne): None
+Opp side (PlayerTwo): None
+
+========================================================================
+TURN-BY-TURN BATTLE LOG
+========================================================================
+
+--- TURN 1 ---
+  You:Garchomp used Earthquake (Ground · Physical · 100 BP) → Opp:p2a [100% → 50%]
+  Opp:Gengar used Shadow Ball (Ghost · Special · 80 BP) → You:p1a [100% → 84%]
+
+--- TURN 2 ---
+  You:Garchomp used Dragon Claw (Dragon · Physical · 80 BP) → Opp:p2a [100% → 17%]
+  Opp:Gengar used Sludge Bomb (Poison · Special · 90 BP) → You:p1a [100% → 70%]
+
+--- TURN 3 ---
+  You:Garchomp used Fire Fang (Fire · Physical · 65 BP) → Opp:p2a [100% → fainted]
+  *** Opp:Gengar FAINTED ***
+
+========================================================================
+RAW PROTOCOL  (complete reference — all WebSocket frames)
+========================================================================
+>battle-gen9randombattle-1
+|init|battle
+|title|PlayerOne vs. PlayerTwo
+|player|p1|PlayerOne|1|
+|player|p2|PlayerTwo|2|
+|teamsize|p1|6
+|teamsize|p2|6
+|gametype|singles
+|gen|9
+|tier|[Gen 9] Random Battle
+|request|{"side":{"id":"p1","name":"PlayerOne","pokemon":[{"ident":"p1: Garchomp","details":"Garchomp, L50, M","condition":"356/356","active":true,"stats":{"atk":200,"def":150,"spa":120,"spd":130,"spe":180},"moves":["earthquake","dragonclaw","swordsdance","firefang"],"baseAbility":"roughskin","item":"lifeorb","ability":"roughskin"}]}}
+|start
+|switch|p1a: Garchomp|Garchomp, L50, M|356/356
+|switch|p2a: Gengar|Gengar, L50, M|262/262
+|turn|1
+|move|p1a: Garchomp|Earthquake|p2a: Gengar
+|-damage|p2a: Gengar|131/262
+|move|p2a: Gengar|Shadow Ball|p1a: Garchomp
+|-damage|p1a: Garchomp|300/356
+|turn|2
+|move|p1a: Garchomp|Dragon Claw|p2a: Gengar
+|-damage|p2a: Gengar|44/262
+|move|p2a: Gengar|Sludge Bomb|p1a: Garchomp
+|-damage|p1a: Garchomp|248/356
+|turn|3
+|move|p1a: Garchomp|Fire Fang|p2a: Gengar
+|-damage|p2a: Gengar|0 fnt
+|faint|p2a: Gengar
+|win|PlayerOne
+
+
+========================================================================
+LLM ANALYSIS PROMPT
+Copy everything from the top of this file through this section and paste it
+into your LLM of choice. The prompt below instructs the LLM on what to analyze.
+------------------------------------------------------------------------
+
+The content above is a complete Pokemon Showdown battle log.
+It was played by PlayerOne (labeled "You" throughout) against PlayerTwo (labeled "Opp").
+Format: [Gen 9] Random Battle  |  Result: YOU WON  |  Turns: 3
+
+Please provide a thorough coaching analysis of this battle. For every claim you
+make, you MUST cite the specific turn number, the move used, and the HP values
+or stat changes from the log that prove your point. Vague observations without
+evidence are not useful — ground every statement in the data above.
+
+Cover the following, in order:
+
+1. OUTCOME DRIVERS
+   What specific decisions, sequences, or events most determined the final result?
+   Cite the exact turn(s), HP values, and moves involved.
+
+2. KEY MISPLAYS (both sides)
+   For each misplay: name the turn, what happened, what a better option was,
+   and why the alternative was stronger given the game state at that moment.
+   Consider move choice, switch timing, Tera activation, and target selection.
+
+3. MISSED WINNING LINES
+   Were there moments where a clean winning sequence existed but wasn't taken?
+   Walk through the line: turn X do A, then turn X+1 do B, etc.
+
+4. OPPONENT ANALYSIS
+   What was the opponent's win condition? Which of their plays were well-executed?
+   What threats did they set up and how did they try to exploit them?
+
+5. RESOURCE MANAGEMENT
+   Evaluate how both sides used: stat boosts (cite the turns), entry hazards,
+   weather/terrain, items, and status moves. Was anything wasted or under-utilized?
+
+6. TEAM SYNERGY & COVERAGE
+   Did the team's moves, abilities, and items work together as a unit?
+   Were there type matchups or win conditions that went unused? What would have
+   been the optimal sequencing of the team given the opponent's revealed team?
+
+7. CONCRETE IMPROVEMENTS (3-5 items)
+   Specific, actionable things the player should do differently next time,
+   each tied to at least one concrete moment from this game as evidence.
+
+Be as detailed as the data supports. The goal is deep, honest coaching —
+not encouragement. Every strength must be earned by the data; every weakness
+must be proven by a turn reference.
+========================================================================

@@ -9,6 +9,8 @@
     "start:local": "cd app && PS_SERVER=local npx electron .",
     "update-upstream": "node scripts/update-upstream.js",
     "apply-overlay": "node scripts/apply-overlay.js",
-    "test": "cd helper && node --test"
+    "test": "cd helper && node --test",
+    "test:smoke": "node helper/test/smoke.mjs",
+    "test:deep": "cd helper && node --test"
   }
 }
