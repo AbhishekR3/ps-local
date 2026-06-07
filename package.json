@@ -4,8 +4,10 @@
   "private": false,
   "engines": { "node": ">=22.6.0" },
   "scripts": {
-    "setup": "echo TODO",
-    "start": "echo TODO",
-    "update-upstream": "echo TODO"
+    "setup": "node scripts/setup.js",
+    "start": "cd app && npx electron .",
+    "update-upstream": "node scripts/update-upstream.js",
+    "apply-overlay": "node scripts/apply-overlay.js",
+    "test": "cd helper && node --test"
   }
 }
