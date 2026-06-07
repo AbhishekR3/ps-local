@@ -1,0 +1,73 @@
+name: upstream-canary
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch: # manual trigger
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bump submodules to upstream latest
+        id: bump
+        run: |
+          git submodule update --remote --merge
+          SERVER_SHA=$(git -C vendor/pokemon-showdown rev-parse --short HEAD)
+          CLIENT_SHA=$(git -C vendor/pokemon-showdown-client rev-parse --short HEAD)
+          echo "server_sha=$SERVER_SHA" >> "$GITHUB_OUTPUT"
+          echo "client_sha=$CLIENT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install and build
+        run: |
+          cd vendor/pokemon-showdown && npm ci && npm run build
+          cd ../../helper && npm install
+
+      - name: Run helper tests
+        id: tests
+        run: cd helper && node --test
+        continue-on-error: true
+
+      - name: Protocol smoke
+        id: smoke
+        run: |
+          node --input-type=module <<'EOF'
+          import { BattleTracker } from './helper/extension/lib/parser.js';
+          import { generateBattleLog } from './helper/extension/lib/exporter.js';
+          import { readFileSync } from 'node:fs';
+          const frames = readFileSync('./helper/test/fixtures/sample-battle.txt', 'utf8').split('\n');
+          const tracker = new BattleTracker();
+          for (const line of frames) tracker.feed(line);
+          const log = generateBattleLog(tracker.state, frames, {});
+          if (!log.includes('POKEMON SHOWDOWN BATTLE LOG')) process.exit(1);
+          if (!log.includes('TURN-BY-TURN')) process.exit(1);
+          EOF
+        continue-on-error: true
+
+      - name: File issue on failure
+        if: steps.tests.outcome == 'failure' || steps.smoke.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const serverSha = '${{ steps.bump.outputs.server_sha }}';
+            const clientSha = '${{ steps.bump.outputs.client_sha }}';
+            const testsOk = '${{ steps.tests.outcome }}' === 'success';
+            const smokeOk = '${{ steps.smoke.outcome }}' === 'success';
+            const broken = [];
+            if (!testsOk) broken.push('helper unit tests');
+            if (!smokeOk) broken.push('protocol smoke');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[upstream-canary] Breakage detected: ${broken.join(', ')}`,
+              body: `## Upstream canary failed\n\n**Broken:** ${broken.join(', ')}\n\n**Submodule SHAs at failure:**\n- pokemon-showdown: \`${serverSha}\`\n- pokemon-showdown-client: \`${clientSha}\`\n\nRun \`npm run update-upstream\` locally to investigate.`,
+              labels: ['upstream-breakage']
+            });

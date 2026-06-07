@@ -1,0 +1,51 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0 # gitleaks scans full history
+
+      # Secret scan FIRST — fail fast before anything else if a credential ever leaks.
+      # Free for public repos (no license env needed).
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install helper deps
+        run: cd helper && npm install
+
+      - name: Run helper unit tests
+        run: cd helper && node --test
+
+      - name: Build server (protocol smoke needs nothing from it, but proves it still builds)
+        run: cd vendor/pokemon-showdown && npm ci && npm run build
+
+      - name: Protocol smoke test
+        run: |
+          node --input-type=module <<'EOF'
+          import { BattleTracker } from './helper/extension/lib/parser.js';
+          import { generateBattleLog } from './helper/extension/lib/exporter.js';
+          import { readFileSync } from 'node:fs';
+
+          const frames = readFileSync('./helper/test/fixtures/sample-battle.txt', 'utf8').split('\n');
+          const tracker = new BattleTracker();
+          for (const line of frames) tracker.feed(line); // verified API: feed(), not consume()
+          const log = generateBattleLog(tracker.state, frames, {});
+          console.assert(log.includes('POKEMON SHOWDOWN BATTLE LOG'), 'missing summary header');
+          console.assert(log.includes('TURN-BY-TURN'), 'missing TURN-BY-TURN section');
+          console.log('Protocol smoke: PASS');
+          EOF
