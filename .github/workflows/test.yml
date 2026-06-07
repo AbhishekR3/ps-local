@@ -34,24 +34,10 @@ jobs:
       - name: Install helper deps
         run: cd helper && npm install
 
-      - name: Run helper unit tests
-        run: cd helper && node --test
-
-      - name: Build server (protocol smoke needs nothing from it, but proves it still builds)
-        run: cd vendor/pokemon-showdown && npm ci && npm run build
-
+      # Fast gate: the standalone smoke (exits non-zero on failure, unlike the old inline
+      # console.assert) plus the full helper unit suite (parser/exporter/golden/edge cases).
       - name: Protocol smoke test
-        run: |
-          node --input-type=module <<'EOF'
-          import { BattleTracker } from './helper/extension/lib/parser.js';
-          import { generateBattleLog } from './helper/extension/lib/exporter.js';
-          import { readFileSync } from 'node:fs';
+        run: npm run test:smoke
 
-          const frames = readFileSync('./helper/test/fixtures/sample-battle.txt', 'utf8').split('\n');
-          const tracker = new BattleTracker();
-          for (const line of frames) tracker.feed(line); // verified API: feed(), not consume()
-          const log = generateBattleLog(tracker.state, frames, {});
-          console.assert(log.includes('POKEMON SHOWDOWN BATTLE LOG'), 'missing summary header');
-          console.assert(log.includes('TURN-BY-TURN'), 'missing TURN-BY-TURN section');
-          console.log('Protocol smoke: PASS');
-          EOF
+      - name: Run helper unit + golden + edge tests
+        run: cd helper && node --test

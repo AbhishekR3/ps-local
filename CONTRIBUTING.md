@@ -44,9 +44,18 @@ layers instead. See [CLAUDE.md](CLAUDE.md) for the full architecture and the C1â
 ## Running tests
 
 ```bash
-npm test                                       # helper unit tests (cd helper && node --test)
+npm run test:smoke                             # fast: one fixture battle through parser -> exporter
+npm run test:deep                              # full helper suite (unit + golden + edge cases)
+npm test                                       # alias for the full suite (cd helper && node --test)
 cd helper && node --test test/parser.test.js   # a single test file
 ```
+
+CI runs `test:smoke` + the unit suite on every PR (`.github/workflows/test.yml`). A heavier
+`deep-test.yml` runs nightly / on-demand: it also builds the bundled PS server and launches the real
+Electron app in `PS_SYNTHETIC` mode under Xvfb to assert the end-to-end logging path writes a file.
+
+If you intentionally change exporter output, regenerate the golden file:
+`node helper/test/golden.test.js --update`.
 
 The pure libs `helper/extension/lib/parser.js` and `helper/extension/lib/exporter.js` are imported by
 **both** the Electron main process and the browser extension. Keep them dependency-free â€” no Node-only

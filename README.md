@@ -1,6 +1,7 @@
 # ps-local
 
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
+[![deep-test](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml)
 [![upstream-canary](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -88,6 +89,22 @@ abilities, and tera types. It opens automatically at app start.
 - **Toggle**: **Cmd+Shift+H** (or View → Toggle Helper Panel)
 - The panel auto-downloads a rich `.txt` log at battle end (same content as the `logs/` file)
 
+## Tests & CI
+
+Two tiers, mirrored locally and in GitHub Actions:
+
+| Tier | Command | What it runs | CI |
+|---|---|---|---|
+| **Smoke** | `npm run test:smoke` | One fixture battle → parser → exporter; asserts the rich log's section anchors. Fast, exits non-zero on failure. | `test.yml` — every push/PR |
+| **Deep** | `npm run test:deep` | Full helper suite: parser, exporter, lookup, integration, **golden-file** comparison, and tie/forfeit/in-progress **edge cases**. | `test.yml` (unit) + `deep-test.yml` |
+
+`deep-test.yml` runs nightly and on-demand (`workflow_dispatch`); on top of the suite it **builds the
+bundled PS server** and launches the **real Electron app in `PS_SYNTHETIC` mode under Xvfb** to prove
+the end-to-end logging path writes a file (the C5 decoupling proof).
+
+If you intentionally change exporter formatting, refresh the golden:
+`node helper/test/golden.test.js --update`.
+
 ## Updating to latest upstream
 
 ps-local wraps two official Pokémon Showdown repositories as git submodules:
@@ -154,7 +171,7 @@ Electron's bundled Chromium ships without Google account/sync services.
 
 - [ ] Distribution: electron-builder packaging, code signing/notarization, auto-update (.dmg/.exe)
 - [ ] Multi-OS CI matrix (ubuntu/macos/windows)
-- [ ] Headless Electron smoke test in CI (synthetic frame → log file)
+- [x] Headless Electron smoke test in CI (synthetic frame → log file) — `deep-test.yml`
 - [ ] Fully-offline client: vendor the data files the client currently fetches remotely
 - [ ] Deeper protocol-drift detection: diff `sim/SIM-PROTOCOL.md` on upstream bumps
 - [ ] In-app log/replay viewer
