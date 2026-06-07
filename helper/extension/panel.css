@@ -22,12 +22,11 @@ header {
 	display: flex; align-items: center; justify-content: space-between;
 }
 .format { font-weight: 600; color: var(--accent); }
-#close-btn, #save-log-btn {
+#close-btn {
 	background: none; border: none; color: var(--muted); cursor: pointer;
 	font-size: 13px; padding: 0 4px; line-height: 1;
 }
-#close-btn:hover, #save-log-btn:hover { color: var(--text); }
-#save-log-btn { margin-right: 4px; font-size: 11px; }
+#close-btn:hover { color: var(--text); }
 main { padding: 10px 12px 24px; }
 .hint { color: var(--muted); font-size: 12px; }
 

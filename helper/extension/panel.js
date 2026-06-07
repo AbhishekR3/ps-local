@@ -45,12 +45,6 @@ async function triggerDownload(state) {
 	URL.revokeObjectURL(url);
 }
 
-document.getElementById('save-log-btn').addEventListener('click', async () => {
-	const s = tracker.state;
-	if (!s.formatId) return;
-	await triggerDownload(s);
-});
-
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 	{ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));

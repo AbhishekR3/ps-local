@@ -12,7 +12,7 @@
 //   PS_SYNTHETIC=1        drive helper/test/fixtures/sample-battle.txt through the real ps-frame
 //                         path with NO server/window/extension, then quit (the C5 decoupling proof)
 //   PS_NO_EXTENSION=1     skip loadExtension (prove logging works with the panel disabled)
-const { app, BrowserWindow, session, ipcMain } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -26,6 +26,12 @@ const SERVER_BIN = path.join(repoRoot, 'vendor', 'pokemon-showdown', 'pokemon-sh
 const LOGS_DIR = path.join(repoRoot, 'logs');
 const SERVER_PORT = 8000;
 const CLIENT_PORT = 8080;
+
+// Connection mode. Default: 'official' — wrap the live play.pokemonshowdown.com client so you play
+// the real ladder, and the tap auto-logs every battle. 'local' (PS_SERVER=local) is the original
+// sandbox: spawn our own server on :8000 and point the bundled testclient at it.
+const MODE = process.env.PS_SERVER === 'local' ? 'local' : 'official';
+const OFFICIAL_URL = 'https://play.pokemonshowdown.com';
 
 const log = createLogger('main');
 const slog = createLogger('server');
@@ -255,15 +261,23 @@ async function createWindow() {
     height: 900,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
+      // Official mode loads the live site, whose CSP blocks an injected inline <script>. With
+      // contextIsolation:false the preload shares the page world and patches window.WebSocket
+      // directly at document_start — CSP-immune and ahead of SockJS's load-time WebSocket capture.
+      // Local mode keeps isolation on and uses the DOM-injected tap (no CSP on the testclient).
+      contextIsolation: MODE === 'local',
       sandbox: false, // preload needs fs to read the tap source + reliable document_start inject
       nodeIntegration: false,
+      // Tell the preload which path to take (renderer env propagation isn't reliable).
+      additionalArguments: [`--ps-mode=${MODE}`],
       // Do NOT set webSecurity:false — the client legitimately cross-origins to the public site
       // for any data files the local build didn't emit.
     },
   });
-  const url = `http://localhost:${CLIENT_PORT}/testclient-new.html?~~localhost:${SERVER_PORT}`;
-  log.info(`loading window: ${url}`);
+  const url = MODE === 'local'
+    ? `http://localhost:${CLIENT_PORT}/testclient-old.html?~~localhost:${SERVER_PORT}`
+    : OFFICIAL_URL;
+  log.info(`loading window (${MODE}): ${url}`);
   await mainWindow.loadURL(url);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -283,6 +297,43 @@ async function loadPanelExtension() {
     // Best-effort: the panel is cosmetic (C3). Logging (C5) is independent.
     log.warn(`loadExtension failed; panel unavailable (logging unaffected): ${e && e.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------- menu
+
+function buildMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Toggle Helper Panel',
+          accelerator: 'CmdOrCtrl+Shift+H',
+          click: () => {
+            mainWindow?.webContents
+              .executeJavaScript("window.postMessage({type:'ps-toggle-panel'},'*')")
+              .catch(() => {});
+          },
+        },
+      ],
+    },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // ---------------------------------------------------------------------------- synthetic C5 proof
@@ -339,16 +390,23 @@ app.whenReady().then(async () => {
     return;
   }
 
-  try {
-    await startStatic();
-  } catch (e) {
-    log.error(`static server failed to start: ${e && e.message} — aborting`);
-    app.quit();
-    return;
+  // Local sandbox only: spawn our own server + serve the bundled client. Official mode skips both
+  // and connects the live client straight to the real ladder.
+  if (MODE === 'local') {
+    try {
+      await startStatic();
+    } catch (e) {
+      log.error(`static server failed to start: ${e && e.message} — aborting`);
+      app.quit();
+      return;
+    }
+    await startServer();
+  } else {
+    log.info('official mode — connecting to the live PS ladder (no local server/static)');
   }
-  await startServer();
   await loadPanelExtension(); // before window so content scripts apply on first load
   await createWindow();
+  buildMenu();
 }).catch((e) => {
   log.error(`fatal during startup: ${e && e.stack}`);
   app.quit();

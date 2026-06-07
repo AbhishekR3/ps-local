@@ -248,10 +248,11 @@ fetch(api.runtime.getURL('data/config.json'))
 if (!document.getElementById('__ps-helper-wrap')) {
 	if (document.documentElement) {
 		injectPanel();
+		setVisible(true);
 		autoHideRooms();
 	} else {
 		new MutationObserver((_, obs) => {
-			if (document.documentElement) { obs.disconnect(); injectPanel(); autoHideRooms(); }
+			if (document.documentElement) { obs.disconnect(); injectPanel(); setVisible(true); autoHideRooms(); }
 		}).observe(document, { childList: true });
 	}
 }
@@ -294,4 +295,9 @@ window.addEventListener('message', (event) => {
 	if (event.source === panelFrame?.contentWindow && event.data?.type === 'close-panel') {
 		setVisible(false);
 	}
+});
+
+// Electron menu / keyboard shortcut: main process fires executeJavaScript which posts this.
+window.addEventListener('message', (event) => {
+	if (event.data?.type === 'ps-toggle-panel') setVisible(!panelVisible);
 });

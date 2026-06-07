@@ -6,6 +6,7 @@
   "scripts": {
     "setup": "node scripts/setup.js",
     "start": "cd app && npx electron .",
+    "start:local": "cd app && PS_SERVER=local npx electron .",
     "update-upstream": "node scripts/update-upstream.js",
     "apply-overlay": "node scripts/apply-overlay.js",
     "test": "cd helper && node --test"
