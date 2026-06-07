@@ -1,0 +1,7 @@
+logs/
+**/config/config.js
+helper/.env
+helper/extension/data/config.json
+node_modules/
+dist/
+.DS_Store

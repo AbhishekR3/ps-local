@@ -1,0 +1,11 @@
+{
+  "name": "ps-local",
+  "version": "0.1.0",
+  "private": false,
+  "engines": { "node": ">=22.6.0" },
+  "scripts": {
+    "setup": "echo TODO",
+    "start": "echo TODO",
+    "update-upstream": "echo TODO"
+  }
+}
