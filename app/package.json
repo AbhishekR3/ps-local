@@ -1,0 +1,10 @@
+{
+  "name": "ps-local-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "engines": { "node": ">=22.6.0" },
+  "dependencies": {
+    "electron": "^33.0.0"
+  }
+}
