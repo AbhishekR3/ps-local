@@ -24,6 +24,12 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          # No root package-lock.json exists, so setup-node's default lockfile search fails with
+          # "Dependencies lock file is not found". Point it at the lockfiles that actually drive
+          # installs (app + the heavy vendor submodule) so the npm cache keys on real deps.
+          cache-dependency-path: |
+            app/package-lock.json
+            vendor/pokemon-showdown/package-lock.json
 
       - name: Install helper deps
         run: cd helper && npm install
