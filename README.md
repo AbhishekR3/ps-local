@@ -1,5 +1,9 @@
 # ps-local
 
+[![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
+[![upstream-canary](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An Electron app that **automatically saves a rich battle log for every battle** — a raw protocol dump
 plus a human-readable, LLM-ready analysis — with zero per-battle action. It runs in one of two modes:
 
@@ -154,3 +158,13 @@ Electron's bundled Chromium ships without Google account/sync services.
 - [ ] Fully-offline client: vendor the data files the client currently fetches remotely
 - [ ] Deeper protocol-drift detection: diff `sim/SIM-PROTOCOL.md` on upstream bumps
 - [ ] In-app log/replay viewer
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the `vendor/` "never source-edit" rule, how to
+run the tests, and what CI expects from a pull request.
+
+## License
+
+[MIT](LICENSE) © Abhishek Ramesh. The wrapped Pokémon Showdown server and client are included only as
+git submodules under `vendor/` and remain under their own (MIT) licenses.
