@@ -24,9 +24,10 @@ test('tie battle (|tie) resolves to TIE', () => {
   assert.doesNotMatch(log, /Result:\s+IN PROGRESS/, 'tie left as IN PROGRESS');
 });
 
-test('opponent forfeit resolves to YOU WON', () => {
+test('opponent forfeit resolves to a named winner', () => {
   const log = render('forfeit-battle.txt');
-  assert.match(log, /Result:\s+YOU WON/, 'forfeit win not resolved');
+  assert.match(log, /Result:\s+\S+ won/, 'forfeit win not resolved to named winner');
+  assert.doesNotMatch(log, /Result:\s+IN PROGRESS/, 'forfeit left as IN PROGRESS');
 });
 
 test('an unfinished battle stays IN PROGRESS', () => {

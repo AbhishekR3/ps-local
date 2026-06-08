@@ -71,6 +71,7 @@ cd battle-helper && node build-data.js
 ```
 
 `build-data.js`:
+
 - imports `data/pokedex.ts` and `data/moves.ts` directly (Node ≥ 22 strips the data-only TS
   types) → trimmed `pokedex.json` / `moves.json`;
 - copies the `random-battles` set files into `extension/data/sets/`;
@@ -86,12 +87,14 @@ cd battle-helper && node build-data.js
 ## Load the extension
 
 **DuckDuckGo (Mac)**
+
 1. Open DuckDuckGo → Settings → **Extensions** → enable **Developer Mode**.
 2. Click **Load Unpacked** → select `battle-helper/extension`.
-3. Go to https://play.pokemonshowdown.com and click the extension icon in the toolbar to
+3. Go to <https://play.pokemonshowdown.com> and click the extension icon in the toolbar to
    toggle the panel.
 
 **Chrome / Edge**
+
 1. Open `chrome://extensions` (or `edge://extensions`), enable **Developer mode**.
 2. **Load unpacked** → select `battle-helper/extension`.
 3. Same as above.
@@ -119,6 +122,7 @@ After any extension reload, **hard-reload the PS tab** (Cmd-Shift-R) — the Web
 is installed at page load and cannot be re-injected into an already-open tab.
 
 In a `gen9randombattle`, check:
+
 - Own active card shows HP ≤ 100%, category icons on moves, correct item/ability/tera.
 - Opponent item predictions sharpen as moves are revealed; sets narrow and used moves highlight.
 - Fainted opponent Pokémon drop to the bottom of the bench list.

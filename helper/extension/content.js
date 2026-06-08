@@ -9,6 +9,11 @@
 // inlined here rather than imported.
 const api = globalThis.browser ?? globalThis.chrome;
 
+// Origin of the panel iframe (chrome-extension://… / moz-extension://…). Used as the explicit
+// targetOrigin when posting to the panel, and to validate messages coming back from it. Derived by
+// string-slicing the extension URL (scheme://host) so it needs no URL global.
+const PANEL_ORIGIN = api.runtime.getURL('panel.html').split('/').slice(0, 3).join('/');
+
 const DEFAULT_WIDTH = 340;
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 680;
@@ -50,7 +55,8 @@ function injectPanel() {
 	].join(';');
 
 	const iframe = document.createElement('iframe');
-	iframe.src = api.runtime.getURL('panel.html');
+	// Pass the page origin so the panel can validate inbound messages and target us back precisely.
+	iframe.src = api.runtime.getURL('panel.html') + '?pageOrigin=' + encodeURIComponent(location.origin);
 	iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
 	iframe.setAttribute('allowtransparency', 'false');
 	iframe.addEventListener('load', () => console.log('[PSH content] panel iframe loaded'));
@@ -113,7 +119,7 @@ function setVisible(v) {
 	// so this re-sync catches a battle that started after the page loaded.
 	if (v) {
 		console.log('[PSH content] setVisible true, posting panel-shown room=' + foregroundRoom());
-		panelFrame?.contentWindow?.postMessage({ type: 'panel-shown', room: foregroundRoom() }, '*');
+		panelFrame?.contentWindow?.postMessage({ type: 'panel-shown', room: foregroundRoom() }, PANEL_ORIGIN);
 	}
 }
 
@@ -152,7 +158,7 @@ pollId = setInterval(() => {
 	if (room !== lastForeground) {
 		lastForeground = room;
 		console.log('[PSH content] foreground room → ' + room);
-		panelFrame?.contentWindow?.postMessage({ type: 'room-changed', room }, '*');
+		panelFrame?.contentWindow?.postMessage({ type: 'room-changed', room }, PANEL_ORIGIN);
 	}
 }, 700);
 
@@ -260,6 +266,7 @@ if (!document.getElementById('__ps-helper-wrap')) {
 // --- WebSocket bridge ---------------------------------------------------------
 function frameHandler(event) {
 	if (dead) return;
+	if (event.origin !== location.origin) return; // only the page's own MAIN-world tap posts here
 	// Do NOT check event.source === window here. In Chrome, MAIN-world → ISOLATED-world
 	// postMessage delivers a different window proxy as event.source, so that check always
 	// fails and silently drops every frame from injected.js. The __psHelper flag below
@@ -277,7 +284,7 @@ function frameHandler(event) {
 	// foreground room (unknown client routing), fall back to forwarding so we never go blind.
 	const fg = foregroundRoom();
 	if (room && (room === fg || !fg)) {
-		panelFrame?.contentWindow?.postMessage({ type: 'ps-frame', data: msg.data }, '*');
+		panelFrame?.contentWindow?.postMessage({ type: 'ps-frame', data: msg.data }, PANEL_ORIGIN);
 	}
 }
 window.addEventListener('message', frameHandler);
@@ -292,7 +299,7 @@ api.runtime.onMessage.addListener((msg) => {
 
 // The panel's close button posts a message to its parent (this content script).
 window.addEventListener('message', (event) => {
-	if (event.source === panelFrame?.contentWindow && event.data?.type === 'close-panel') {
+	if (event.origin === PANEL_ORIGIN && event.source === panelFrame?.contentWindow && event.data?.type === 'close-panel') {
 		setVisible(false);
 	}
 });

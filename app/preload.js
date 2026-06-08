@@ -20,7 +20,7 @@ const MODE = (process.argv.find((a) => a.startsWith('--ps-mode=')) || '--ps-mode
   .slice('--ps-mode='.length);
 
 function plog(level, msg) {
-  try { ipcRenderer.send('ps-log', { level, ns: 'preload', msg }); } catch {}
+  try { ipcRenderer.send('ps-log', { level, ns: 'preload', msg }); } catch { /* empty */ }
   console.log(`[preload] ${msg}`);
 }
 

@@ -34,19 +34,18 @@ function formatBoosts(boostObj) {
 }
 
 // Render one turn's raw protocol lines into a human-readable narrative.
-// hpBefore tracks HP% at the start of each event for "before→after" annotations.
-function renderTurn(turnNum, lines, mySide, movesData) {
+// Uses P1/P2 labels — objective perspective, no "You"/"Opp" framing.
+function renderTurn(turnNum, lines, movesData) {
 	const out = [];
-	// Track HP percentages and owner name per slot for damage annotations.
-	const hp = {};        // slot -> { hp, maxhp } updated as we go
+	const hp = {};        // slot -> { hp, maxhp }
 	const slotName = {};  // slot -> "Species"
-	let lastMoveTarget = null; // slot that was the most recent damage target
-	let lastMoveLine = -1;     // index into out[] where the last move line sits
+	let lastMoveTarget = null;
+	let lastMoveLine = -1;
 
+	const sideLabel = (side) => side === 'p1' ? 'P1' : 'P2';
 	const slotLabel = (slot) => {
 		if (!slot) return '?';
-		const side = slot.slice(0, 2) === mySide ? 'You' : 'Opp';
-		return `${side}:${slotName[slot] || slot}`;
+		return `${sideLabel(slot.slice(0, 2))}:${slotName[slot] || slot}`;
 	};
 
 	for (const line of lines) {
@@ -63,9 +62,8 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const cond = parts[4] ? parseCondition(parts[4]) : { hp: 100, maxhp: 100 };
 				slotName[ident.slot] = det.species;
 				hp[ident.slot] = { hp: cond.hp, maxhp: cond.maxhp };
-				const side = ident.side === mySide ? 'You' : 'Opp';
 				const hpStr = `HP: ${pct(cond.hp, cond.maxhp)}`;
-				out.push(`  ${side}:${det.species} switched in (L${det.level}${det.gender ? ' ' + det.gender : ''}, ${hpStr})`);
+				out.push(`  ${sideLabel(ident.side)}:${det.species} switched in (L${det.level}${det.gender ? ' ' + det.gender : ''}, ${hpStr})`);
 				lastMoveTarget = null;
 				break;
 			}
@@ -76,11 +74,10 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const species = slotName[ident.slot] || ident.name;
 				const moveName = parts[3];
 				const detail = moveDetail(moveName.toLowerCase().replace(/[^a-z0-9]/g, ''), movesData);
-				const side = ident.side === mySide ? 'You' : 'Opp';
 				const targetStr = targetIdent ? ` → ${slotLabel(targetIdent.slot)}` : '';
 				lastMoveTarget = targetIdent?.slot || null;
 				lastMoveLine = out.length;
-				out.push(`  ${side}:${species} used ${detail}${targetStr}`);
+				out.push(`  ${sideLabel(ident.side)}:${species} used ${detail}${targetStr}`);
 				break;
 			}
 			case '-damage': {
@@ -91,12 +88,10 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const before = pct(prev.hp, prev.maxhp || cond.maxhp);
 				const after = cond.fainted ? 'fainted' : pct(cond.hp, cond.maxhp);
 				hp[ident.slot] = { hp: cond.hp, maxhp: cond.maxhp || prev.maxhp };
-				// Append damage inline to the last move line if target matches.
 				if (lastMoveLine >= 0 && ident.slot === lastMoveTarget) {
 					out[lastMoveLine] += ` [${before} → ${after}]`;
 				} else {
-					const side = ident.side === mySide ? 'You' : 'Opp';
-					out.push(`    ${side}:${slotName[ident.slot] || ident.name} took damage [${before} → ${after}]`);
+					out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} took damage [${before} → ${after}]`);
 				}
 				break;
 			}
@@ -109,10 +104,8 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const before = pct(prev.hp, prev.maxhp || cond.maxhp);
 				const after = pct(cond.hp, cond.maxhp);
 				hp[ident.slot] = { hp: cond.hp, maxhp: cond.maxhp };
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				const species = slotName[ident.slot] || ident.name;
 				const fromTag = parts.find((p) => p.startsWith('[from]'))?.slice(7) || 'healed';
-				out.push(`    ${side}:${species} ${fromTag} [${before} → ${after}]`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ${fromTag} [${before} → ${after}]`);
 				break;
 			}
 			case '-boost':
@@ -122,13 +115,10 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const stat = STAT_NAMES[parts[3]] || parts[3];
 				const n = parseInt(parts[4], 10) || 1;
 				const dir = cmd === '-boost' ? `+${n}` : `-${n}`;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				const species = slotName[ident.slot] || ident.name;
-				// Append stat change inline to the last move line when it immediately follows a move.
 				if (lastMoveLine >= 0 && lastMoveLine === out.length - 1) {
 					out[lastMoveLine] += ` [${stat} ${dir}]`;
 				} else {
-					out.push(`    ${side}:${species} ${stat} ${dir}`);
+					out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ${stat} ${dir}`);
 				}
 				break;
 			}
@@ -137,14 +127,13 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				if (!ident) break;
 				const stat = STAT_NAMES[parts[3]] || parts[3];
 				const val = parseInt(parts[4], 10);
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} ${stat} set to ${val > 0 ? '+' : ''}${val}`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ${stat} set to ${val > 0 ? '+' : ''}${val}`);
 				break;
 			}
 			case '-clearboost':
 			case '-clearallboost': {
 				const ident = parseIdent(parts[2]);
-				const label = ident ? `${ident.side === mySide ? 'You' : 'Opp'}:${slotName[ident.slot] || ident.name}` : 'All';
+				const label = ident ? `${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name}` : 'All';
 				out.push(`    ${label} stat boosts cleared`);
 				break;
 			}
@@ -170,50 +159,43 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
 				const statusName = STATUS_NAMES[parts[3]] || parts[3];
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} was ${statusName}`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} was ${statusName}`);
 				break;
 			}
 			case '-curestatus': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} was cured of its status`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} was cured of its status`);
 				break;
 			}
 			case 'faint': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`  *** ${side}:${slotName[ident.slot] || ident.name} FAINTED ***`);
+				out.push(`  *** ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} FAINTED ***`);
 				break;
 			}
 			case '-terastallize': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} terastallized into ${parts[3]} type`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} terastallized into ${parts[3]} type`);
 				break;
 			}
 			case '-ability': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} ability revealed: ${parts[3]}`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ability revealed: ${parts[3]}`);
 				break;
 			}
 			case '-item': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} item revealed: ${parts[3]}`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} item revealed: ${parts[3]}`);
 				break;
 			}
 			case '-enditem': {
 				const ident = parseIdent(parts[2]);
 				if (!ident) break;
-				const side = ident.side === mySide ? 'You' : 'Opp';
-				out.push(`    ${side}:${slotName[ident.slot] || ident.name} lost item: ${parts[3]}`);
+				out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} lost item: ${parts[3]}`);
 				break;
 			}
 			case '-weather': {
@@ -247,27 +229,20 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 			case '-sidestart': {
 				const side = parts[2]?.replace(/:.*/, '');
 				const cond = parts[3]?.replace(/^move: /, '');
-				if (side && cond) {
-					const label = side === mySide ? 'Your side' : "Opponent's side";
-					out.push(`    ${label}: ${cond} set up`);
-				}
+				if (side && cond) out.push(`    ${sideLabel(side)} side: ${cond} set up`);
 				break;
 			}
 			case '-sideend': {
 				const side = parts[2]?.replace(/:.*/, '');
 				const cond = parts[3]?.replace(/^move: /, '');
-				if (side && cond) {
-					const label = side === mySide ? 'Your side' : "Opponent's side";
-					out.push(`    ${label}: ${cond} ended`);
-				}
+				if (side && cond) out.push(`    ${sideLabel(side)} side: ${cond} ended`);
 				break;
 			}
 			case '-start': {
 				const ident = parseIdent(parts[2]);
 				const effect = parts[3]?.replace(/^move: /, '');
 				if (ident && effect) {
-					const side = ident.side === mySide ? 'You' : 'Opp';
-					out.push(`    ${side}:${slotName[ident.slot] || ident.name} ${effect} started`);
+					out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ${effect} started`);
 				}
 				break;
 			}
@@ -275,8 +250,7 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const ident = parseIdent(parts[2]);
 				const effect = parts[3]?.replace(/^move: /, '');
 				if (ident && effect) {
-					const side = ident.side === mySide ? 'You' : 'Opp';
-					out.push(`    ${side}:${slotName[ident.slot] || ident.name} ${effect} ended`);
+					out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} ${effect} ended`);
 				}
 				break;
 			}
@@ -284,8 +258,7 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 				const ident = parseIdent(parts[2]);
 				const effect = parts[3]?.replace(/^(move|ability|item): /, '');
 				if (ident && effect) {
-					const side = ident.side === mySide ? 'You' : 'Opp';
-					out.push(`    ${side}:${slotName[ident.slot] || ident.name} activated: ${effect}`);
+					out.push(`    ${sideLabel(ident.side)}:${slotName[ident.slot] || ident.name} activated: ${effect}`);
 				}
 				break;
 			}
@@ -306,7 +279,7 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 			case '-primal':
 				// Omit noise — these rarely affect strategy analysis.
 				break;
-			// Explicit skip for frame-routing lines. ('upkeep' is already handled above.)
+			// Explicit skip for frame-routing lines.
 			case 'request':
 			case 'win':
 			case 'tie':
@@ -334,47 +307,13 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 	return out;
 }
 
-export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC') {
-	const mySide = state.mySide || 'p1';
-	const oppSide = mySide === 'p1' ? 'p2' : 'p1';
-	const myName = state.players[mySide]?.name || mySide;
-	const oppName = state.players[oppSide]?.name || oppSide;
-
-	// Determine result string.
-	let result;
-	if (!state.ended) {
-		result = 'IN PROGRESS';
-	} else if (!state.winner) {
-		result = 'TIE';
-	} else if (state.winner === myName) {
-		result = 'YOU WON';
-	} else {
-		result = 'YOU LOST';
-	}
-
+// Render a team section from full request data (myTeam) — used for the side that had |request|.
+function renderFullTeam(myTeam, movesData) {
 	const lines = [];
-
-	// ── BATTLE SUMMARY ────────────────────────────────────────────────────────
-	lines.push(hr());
-	lines.push('POKEMON SHOWDOWN BATTLE LOG');
-	lines.push(hr());
-	lines.push(`Format:    ${state.tier || state.formatId || 'Unknown'}`);
-	lines.push(`Gen:       ${state.gen ?? '?'}`);
-	lines.push(`Game type: ${state.gameType || 'singles'}`);
-	lines.push(`Players:   ${myName} (you) vs ${oppName} (opponent)`);
-	lines.push(`Turns:     ${state.turn}`);
-	lines.push(`Result:    ${result}`);
-	lines.push(`Generated: ${new Date().toLocaleString('en-US', { timeZone: timezone })}`);
-	lines.push('');
-
-	// ── YOUR TEAM ─────────────────────────────────────────────────────────────
-	lines.push(hr());
-	lines.push('YOUR TEAM  (full details from request data)');
-	lines.push(hr());
-	if (state.myTeam.length === 0) {
+	if (myTeam.length === 0) {
 		lines.push('  (no team data — |request| not yet received)');
 	} else {
-		for (const p of state.myTeam) {
+		for (const p of myTeam) {
 			const gender = p.gender ? ` ${p.gender}` : '';
 			const cond = p.condition || '100/100';
 			const hpStr = (() => {
@@ -393,17 +332,17 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 			}
 		}
 	}
-	lines.push('');
+	return lines;
+}
 
-	// ── OPPONENT TEAM (REVEALED) ───────────────────────────────────────────────
-	lines.push(hr());
-	lines.push(`OPPONENT TEAM  (${oppName} — revealed during battle)`);
-	lines.push(hr());
-	const oppRevealed = Object.values(state.revealed[oppSide] || {});
-	if (oppRevealed.length === 0) {
+// Render a team section from revealed-during-battle data — used for the side without |request|.
+function renderRevealedTeam(revealed, movesData) {
+	const lines = [];
+	const entries = Object.values(revealed || {});
+	if (entries.length === 0) {
 		lines.push('  (nothing revealed yet)');
 	} else {
-		for (const r of oppRevealed) {
+		for (const r of entries) {
 			const levelStr = r.level ? ` L${r.level}` : '';
 			const itemStr = r.item ? `  |  Item: ${r.item}` : '  |  Item: ?';
 			const abilStr = r.ability ? `  |  Ability: ${r.ability}` : '  |  Ability: ?';
@@ -415,6 +354,53 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 			}
 		}
 	}
+	return lines;
+}
+
+export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC') {
+	const p1name = state.players.p1?.name || 'Player 1';
+	const p2name = state.players.p2?.name || 'Player 2';
+
+	// Objective result: who won, not which perspective.
+	let result;
+	if (!state.ended) {
+		result = 'IN PROGRESS';
+	} else if (!state.winner) {
+		result = 'TIE';
+	} else {
+		result = `${state.winner} won`;
+	}
+
+	const lines = [];
+
+	// ── BATTLE SUMMARY ────────────────────────────────────────────────────────
+	lines.push(hr());
+	lines.push('POKEMON SHOWDOWN BATTLE LOG');
+	lines.push(hr());
+	lines.push(`Format:    ${state.tier || state.formatId || 'Unknown'}`);
+	lines.push(`Gen:       ${state.gen ?? '?'}`);
+	lines.push(`Game type: ${state.gameType || 'singles'}`);
+	lines.push(`Players:   ${p1name} (Player 1) vs ${p2name} (Player 2)`);
+	lines.push(`Turns:     ${state.turn}`);
+	lines.push(`Result:    ${result}`);
+	lines.push(`Generated: ${new Date().toLocaleString('en-US', { timeZone: timezone })}`);
+	lines.push('');
+
+	// ── PLAYER 1 TEAM ─────────────────────────────────────────────────────────
+	const p1HasFull = state.mySide === 'p1' && state.myTeam.length > 0;
+	const p2HasFull = state.mySide === 'p2' && state.myTeam.length > 0;
+
+	lines.push(hr());
+	lines.push(`PLAYER 1 TEAM  (${p1name}${p1HasFull ? ' — full details' : ' — revealed data only'})`);
+	lines.push(hr());
+	lines.push(...(p1HasFull ? renderFullTeam(state.myTeam, movesData) : renderRevealedTeam(state.revealed.p1, movesData)));
+	lines.push('');
+
+	// ── PLAYER 2 TEAM ─────────────────────────────────────────────────────────
+	lines.push(hr());
+	lines.push(`PLAYER 2 TEAM  (${p2name}${p2HasFull ? ' — full details' : ' — revealed data only'})`);
+	lines.push(hr());
+	lines.push(...(p2HasFull ? renderFullTeam(state.myTeam, movesData) : renderRevealedTeam(state.revealed.p2, movesData)));
 	lines.push('');
 
 	// ── FIELD STATE AT END ────────────────────────────────────────────────────
@@ -425,9 +411,8 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 	lines.push(`Terrain:      ${state.terrain ? (TERRAIN_NAMES[state.terrain] || state.terrain) : 'None'}`);
 	const pwKeys = Object.keys(state.pseudoWeather);
 	lines.push(`Field effects: ${pwKeys.length ? pwKeys.join(', ') : 'None'}`);
-	lines.push(`Your side (${myName}): ${Object.keys(state.sideConditions[mySide] || {}).map((k) => `${k}${state.sideConditions[mySide][k] > 1 ? ' ×' + state.sideConditions[mySide][k] : ''}`).join(', ') || 'None'}`);
-	lines.push(`Opp side (${oppName}): ${Object.keys(state.sideConditions[oppSide] || {}).map((k) => `${k}${state.sideConditions[oppSide][k] > 1 ? ' ×' + state.sideConditions[oppSide][k] : ''}`).join(', ') || 'None'}`);
-	// Active boosts at end of battle
+	lines.push(`P1 side (${p1name}): ${Object.keys(state.sideConditions.p1 || {}).map((k) => `${k}${state.sideConditions.p1[k] > 1 ? ' ×' + state.sideConditions.p1[k] : ''}`).join(', ') || 'None'}`);
+	lines.push(`P2 side (${p2name}): ${Object.keys(state.sideConditions.p2 || {}).map((k) => `${k}${state.sideConditions.p2[k] > 1 ? ' ×' + state.sideConditions.p2[k] : ''}`).join(', ') || 'None'}`);
 	const boostEntries = Object.entries(state.boosts).filter(([, b]) => Object.values(b).some((v) => v !== 0));
 	if (boostEntries.length) {
 		lines.push('Active stat boosts:');
@@ -443,21 +428,16 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 	lines.push(hr());
 
 	if (state.turnLog.length === 0) {
-		// Fall back to annotating raw frames when the parser didn't accumulate a turnLog
-		// (e.g. an older buffer replayed without the updated parser).
 		lines.push('  (turn log not available — showing raw protocol frames)');
 		lines.push('');
 		for (const frame of rawFrames) {
 			lines.push(frame);
 		}
 	} else {
-		// Replay all frames to rebuild HP state at start of each turn for context.
-		// We walk the turnLog using the same annotation logic as renderTurn.
-		const allSlotNames = {}; // accumulated across turns
+		const allSlotNames = {};
 		for (const turn of state.turnLog) {
 			lines.push('');
 			lines.push(`--- TURN ${turn.num} ---`);
-			// Show active boosts at turn start for any slot with non-zero boosts.
 			const turnBoostEntries = Object.entries(state.boosts).filter(([, b]) => Object.values(b).some((v) => v !== 0));
 			if (turnBoostEntries.length) {
 				const boostSummary = turnBoostEntries
@@ -465,9 +445,7 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 					.join(', ');
 				lines.push(`  Active boosts: ${boostSummary}`);
 			}
-			// Render the turn's events.
-			const rendered = renderTurn(turn.num, turn.lines, mySide, movesData);
-			// Propagate slot names gathered during render (needed if this turn had switches).
+			const rendered = renderTurn(turn.num, turn.lines, movesData);
 			lines.push(...rendered);
 		}
 	}
@@ -490,7 +468,7 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 	lines.push(hr('-'));
 	lines.push('');
 	lines.push('The content above is a complete Pokemon Showdown battle log.');
-	lines.push(`It was played by ${myName} (labeled "You" throughout) against ${oppName} (labeled "Opp").`);
+	lines.push(`Players: ${p1name} (labeled "P1" throughout) vs ${p2name} (labeled "P2").`);
 	lines.push(`Format: ${state.tier || state.formatId || 'Unknown'}  |  Result: ${result}  |  Turns: ${state.turn}`);
 	lines.push('');
 	lines.push('Please provide a thorough coaching analysis of this battle. For every claim you');
@@ -513,21 +491,21 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 	lines.push('   Were there moments where a clean winning sequence existed but wasn\'t taken?');
 	lines.push('   Walk through the line: turn X do A, then turn X+1 do B, etc.');
 	lines.push('');
-	lines.push('4. OPPONENT ANALYSIS');
-	lines.push('   What was the opponent\'s win condition? Which of their plays were well-executed?');
-	lines.push('   What threats did they set up and how did they try to exploit them?');
+	lines.push('4. PLAYER ANALYSIS (both sides)');
+	lines.push('   What was each player\'s win condition? Which plays were well-executed?');
+	lines.push('   What threats did each player set up and how did they exploit them?');
 	lines.push('');
 	lines.push('5. RESOURCE MANAGEMENT');
 	lines.push('   Evaluate how both sides used: stat boosts (cite the turns), entry hazards,');
 	lines.push('   weather/terrain, items, and status moves. Was anything wasted or under-utilized?');
 	lines.push('');
 	lines.push('6. TEAM SYNERGY & COVERAGE');
-	lines.push('   Did the team\'s moves, abilities, and items work together as a unit?');
+	lines.push('   Did each team\'s moves, abilities, and items work together as a unit?');
 	lines.push('   Were there type matchups or win conditions that went unused? What would have');
-	lines.push('   been the optimal sequencing of the team given the opponent\'s revealed team?');
+	lines.push('   been the optimal sequencing given the opponent\'s revealed team?');
 	lines.push('');
-	lines.push('7. CONCRETE IMPROVEMENTS (3-5 items)');
-	lines.push('   Specific, actionable things the player should do differently next time,');
+	lines.push('7. CONCRETE IMPROVEMENTS (3-5 items per player)');
+	lines.push('   Specific, actionable things each player should do differently next time,');
 	lines.push('   each tied to at least one concrete moment from this game as evidence.');
 	lines.push('');
 	lines.push('Be as detailed as the data supports. The goal is deep, honest coaching —');

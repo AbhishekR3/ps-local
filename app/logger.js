@@ -31,7 +31,7 @@ function emit(level, ns, args) {
   const line = `${new Date().toISOString()} [${level.padEnd(5)}] [${ns}] ${args.map(render).join(' ')}`;
   (level === 'WARN' || level === 'ERROR' ? console.error : console.log)(line);
   // Best-effort file sink — never let a logging failure take down the app.
-  try { fs.appendFileSync(file(), line + '\n'); } catch {}
+  try { fs.appendFileSync(file(), line + '\n'); } catch { /* empty */ }
 }
 
 function createLogger(ns) {

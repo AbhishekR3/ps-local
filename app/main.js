@@ -12,7 +12,7 @@
 //   PS_SYNTHETIC=1        drive helper/test/fixtures/sample-battle.txt through the real ps-frame
 //                         path with NO server/window/extension, then quit (the C5 decoupling proof)
 //   PS_NO_EXTENSION=1     skip loadExtension (prove logging works with the panel disabled)
-const { app, BrowserWindow, session, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Menu, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -23,7 +23,7 @@ const { createLogger } = require('./logger');
 const repoRoot = path.join(__dirname, '..');
 const CLIENT_ROOT = path.join(repoRoot, 'vendor', 'pokemon-showdown-client', 'play.pokemonshowdown.com');
 const SERVER_BIN = path.join(repoRoot, 'vendor', 'pokemon-showdown', 'pokemon-showdown');
-const LOGS_DIR = path.join(repoRoot, 'logs');
+const LOGS_DIR = path.join(repoRoot, 'logs', 'battle_info');
 const SERVER_PORT = 8000;
 const CLIENT_PORT = 8080;
 
@@ -53,6 +53,11 @@ let movesData = {};
 // One tracker per room: feed() auto-resets when it sees a different >battle- roomid, so a shared
 // tracker would thrash across concurrent rooms.
 const rooms = new Map();
+
+// Safety valves so a battle that disconnects without an end frame can't leak forever (B3).
+const STALE_ROOM_MS = 30 * 60 * 1000;     // evict rooms idle longer than this (flushed as INPROGRESS)
+const MAX_FRAMES_PER_ROOM = 100000;       // hard cap on buffered frames per room
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000;  // how often the stale-room sweep runs
 
 // ---------------------------------------------------------------------------- helper libs / data
 
@@ -92,18 +97,17 @@ function sanitize(name) {
 function writeLog(roomid, state, rawFrames) {
   try {
     fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const mySide = state.mySide || 'p1';
-    const myName = state.players?.[mySide]?.name || null;
-    const oppSide = mySide === 'p1' ? 'p2' : 'p1';
-    const opponent = state.players?.[oppSide]?.name || 'unknown';
 
-    let result;
-    if (!state.ended) result = 'INPROGRESS';
-    else if (!state.winner) result = 'TIE';
-    else if (state.winner === myName) result = 'WIN';
-    else result = 'LOSS';
+    // Unified objective filename: Player 1 vs Player 2, with winner name (not you/opponent POV).
+    const p1 = sanitize(state.players?.p1?.name || 'p1');
+    const p2 = sanitize(state.players?.p2?.name || 'p2');
+    let resultToken;
+    if (!state.ended) resultToken = 'INPROGRESS';
+    else if (!state.winner) resultToken = 'TIE';
+    else resultToken = `WIN_${sanitize(state.winner)}`;
+    const prefix = state.mySide ? '' : 'SPEC_'; // SPEC_ marks games watched as a spectator
+    const base = `${roomid}_${prefix}${p1}_vs_${p2}_${resultToken}_${Date.now()}`;
 
-    const base = `${roomid}_${result}_vs_${sanitize(opponent)}_${Date.now()}`;
     const rawPath = path.join(LOGS_DIR, `${base}.raw.txt`);
     const richPath = path.join(LOGS_DIR, `${base}.txt`);
 
@@ -118,19 +122,60 @@ function writeLog(roomid, state, rawFrames) {
   }
 }
 
+// Write out every still-open room (as INPROGRESS) on an unexpected shutdown/crash so a battle in
+// flight isn't lost. writeLog already emits INPROGRESS when state.ended is false.
+function flushAllRooms(reason) {
+  if (rooms.size === 0) return;
+  wlog.warn(`flushing ${rooms.size} open room(s) on ${reason}`);
+  for (const [roomid, entry] of rooms) {
+    try {
+      writeLog(roomid, entry.tracker.state, entry.rawFrames);
+    } catch (e) {
+      wlog.error(`flushAllRooms failed for ${roomid}: ${e && e.stack}`);
+    }
+  }
+  rooms.clear();
+}
+
+// Periodic safety sweep: a battle that drops without an end frame would otherwise leak in `rooms`.
+function sweepStaleRooms() {
+  const now = Date.now();
+  for (const [roomid, entry] of rooms) {
+    if (now - entry.lastSeen > STALE_ROOM_MS) {
+      wlog.warn(`evicting stale room ${roomid} (idle ${Math.round((now - entry.lastSeen) / 1000)}s, turn=${entry.tracker.state.turn})`);
+      try {
+        writeLog(roomid, entry.tracker.state, entry.rawFrames);
+      } catch (e) {
+        wlog.error(`stale flush failed for ${roomid}: ${e && e.stack}`);
+      }
+      rooms.delete(roomid);
+    }
+  }
+}
+
 function handleFrame(frameData) {
   const roomid = roomidOf(frameData);
   if (!roomid) return; // lobby / non-battle frame — nothing to accumulate
 
   let entry = rooms.get(roomid);
   if (!entry) {
-    entry = { tracker: new BattleTracker(), rawFrames: [] };
+    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now() };
     rooms.set(roomid, entry);
     log.info(`room opened: ${roomid}`);
   }
+  entry.lastSeen = Date.now();
 
   entry.tracker.feed(frameData);
   entry.rawFrames.push(frameData);
+
+  // Hard cap: flush + evict a room that grows without ever ending, to bound memory.
+  if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {
+    wlog.warn(`room ${roomid} exceeded ${MAX_FRAMES_PER_ROOM} frames — flushing + evicting`);
+    writeLog(roomid, entry.tracker.state, entry.rawFrames);
+    rooms.delete(roomid);
+    return;
+  }
+
   const st = entry.tracker.state;
   log.debug(`frame ${roomid} turn=${st.turn} ended=${st.ended} bytes=${frameData.length}`);
 
@@ -202,7 +247,7 @@ function startServer() {
 function stopServer() {
   if (serverProc && !serverProc.killed) {
     log.info('stopping server (SIGTERM)');
-    try { serverProc.kill('SIGTERM'); } catch {}
+    try { serverProc.kill('SIGTERM'); } catch { /* empty */ }
   }
 }
 
@@ -276,12 +321,28 @@ async function createWindow() {
       // for any data files the local build didn't emit.
     },
   });
+  // Hardening (B4): never open in-app popups. Route external links (replays, profiles, etc.) to the
+  // system browser instead of a fresh BrowserWindow. webSecurity stays on — see webPreferences above.
+  mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (/^https?:\/\//.test(target)) {
+      shell.openExternal(target).catch((e) => log.warn(`openExternal failed: ${e && e.message}`));
+    }
+    return { action: 'deny' };
+  });
+
   const url = MODE === 'local'
     ? `http://localhost:${CLIENT_PORT}/testclient-old.html?~~localhost:${SERVER_PORT}`
     : OFFICIAL_URL;
   log.info(`loading window (${MODE}): ${url}`);
-  await mainWindow.loadURL(url);
   mainWindow.on('closed', () => { mainWindow = null; });
+  try {
+    await mainWindow.loadURL(url);
+  } catch (e) {
+    // A transient navigation failure (network blip, or the live site aborting the initial load) must
+    // NOT kill the app — keep the window open and retry once so a flaky first load self-heals.
+    log.warn(`initial loadURL failed (${e && e.message}); retrying once`);
+    mainWindow.loadURL(url).catch((e2) => log.error(`reload after failed load also failed: ${e2 && e2.message}`));
+  }
 }
 
 async function loadPanelExtension() {
@@ -377,6 +438,21 @@ ipcMain.on('ps-log', (_e, m) => {
 
 // ---------------------------------------------------------------------------- lifecycle
 
+// Single-instance lock (B1, seeds 2H). Skip in synthetic mode so CI/deep-test and concurrent
+// synthetic runs aren't blocked by an already-running interactive instance. Calling app.quit()
+// before 'ready' prevents startup, so the second instance never spawns a server or window.
+const gotSingleInstanceLock = process.env.PS_SYNTHETIC === '1' || app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  log.warn('another ps-local instance is already running — quitting this one');
+  app.quit();
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   log.info(`ps-local starting — electron=${process.versions.electron} node=${process.versions.node} chromium=${process.versions.chrome}`);
   log.info(`repoRoot=${repoRoot} PS_LOG_LEVEL=${process.env.PS_LOG_LEVEL || 'INFO'}`);
@@ -409,19 +485,41 @@ app.whenReady().then(async () => {
   await loadPanelExtension(); // before window so content scripts apply on first load
   await createWindow();
   buildMenu();
+
+  // Periodic safety sweep: evict rooms that went idle without an end frame (flushed as INPROGRESS).
+  // unref() so the timer never keeps the process alive on its own.
+  setInterval(sweepStaleRooms, SWEEP_INTERVAL_MS).unref();
 }).catch((e) => {
   log.error(`fatal during startup: ${e && e.stack}`);
   app.quit();
 });
 
-app.on('before-quit', stopServer);
+// On any shutdown path, persist in-flight battles (B2) and reap the server child.
+app.on('before-quit', () => { flushAllRooms('before-quit'); stopServer(); });
 app.on('window-all-closed', () => {
   stopServer();
   app.quit();
 });
+
+// Crash resilience (B2): save whatever battles are open before the renderer/child tears down.
+app.on('render-process-gone', (_e, _wc, details) => {
+  log.error(`render-process-gone: reason=${details && details.reason}`);
+  flushAllRooms('render-process-gone');
+});
+app.on('child-process-gone', (_e, details) => {
+  log.error(`child-process-gone: type=${details && details.type} reason=${details && details.reason}`);
+});
+
+// Last-resort: flush logs on an otherwise-fatal error, then exit (don't swallow indefinitely).
+process.on('uncaughtException', (err) => {
+  log.error(`uncaughtException: ${err && err.stack}`);
+  flushAllRooms('uncaughtException');
+  app.exit(1);
+});
+
 // Backstop: if we exit without a clean before-quit, make sure the server child dies too.
 process.on('exit', () => {
   if (serverProc && !serverProc.killed) {
-    try { serverProc.kill('SIGKILL'); } catch {}
+    try { serverProc.kill('SIGKILL'); } catch { /* empty */ }
   }
 });

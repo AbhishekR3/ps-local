@@ -82,9 +82,14 @@ This is the core flow and spans `app/preload.js` → `app/main.js` → `helper/e
 2. `injected.js` (the proven tap, shared with the Chrome extension) subclasses `window.WebSocket`,
    decodes SockJS `a[...]` frames, and `postMessage`s each `>battle-…` frame.
 3. The preload relays those over the `ps-frame` IPC channel to main.
-4. `app/main.js` keeps **one `BattleTracker` per room** (`Map<roomid, {tracker, rawFrames}>`) — `feed()`
+4. `app/main.js` keeps **one `BattleTracker` per room** (`Map<roomid, {tracker, rawFrames, lastSeen}>`) — `feed()`
    auto-resets on a new `>battle-…` roomid, so a shared tracker would thrash. On `|win|`/`|tie|`/
-   `|deinit|(turn≥1)` it calls `generateBattleLog` and writes `logs/<roomid>_<RESULT>_vs_<opp>_<ts>.{txt,raw.txt}`.
+   `|deinit|(turn≥1)` it calls `generateBattleLog` and writes to `logs/battle_info/`.
+   - **Own battle**: `<roomid>_WIN|LOSS|TIE_vs_<opp>_<ts>.{txt,raw.txt}`
+   - **Spectator** (`state.mySide === null`): `<roomid>_SPEC_<p1>_vs_<p2>_WIN_<winner>|TIE_<ts>.{txt,raw.txt}`
+   - Crash/disconnect: `flushAllRooms()` is wired into `before-quit`, `render-process-gone`, and
+     `uncaughtException` so in-progress battles are saved as `INPROGRESS` files on unexpected exit.
+   - Stale rooms (disconnected without an end frame) are swept every 5 min and evicted after 30 min idle.
 
 This path is **independent of the extension** (`loadExtension` is best-effort, panel-only). That
 decoupling is the contractual test — `PS_SYNTHETIC=1`/`PS_NO_EXTENSION=1` prove it.
@@ -104,12 +109,12 @@ It shows opponent Pokémon breakdowns (predicted sets, stats, abilities, tera) i
 - **Toggle**: **Cmd+Shift+H** (View → Toggle Helper Panel). `app/main.js`'s `buildMenu()` sets up the
   app menu; the accelerator fires `executeJavaScript("window.postMessage({type:'ps-toggle-panel'},'*')")`,
   which `content.js` relays to `setVisible(!panelVisible)`.
-- **Auto-download**: when a battle ends (`|win|`/`|tie|`/`|deinit|, turn≥1`), `panel.js` calls
-  `triggerDownload` which generates a rich `.txt` via `generateBattleLog` and triggers a browser file
-  download. This is **separate** from main.js's direct write to `logs/` — both fire on battle end.
-  `downloadedRooms` (a `Set`) prevents double-download within a panel session.
-- The panel's `triggerDownload` fetches raw frames from the background service worker buffer
-  (`get-buffer` message); main.js's writer uses its own `rawFrames` array accumulated over IPC.
+- **No panel download**: the panel no longer triggers a browser file-download. main.js is the sole
+  writer; logs go to `logs/battle_info/` automatically.
+- **Spectator mode**: when watching someone else's battle, `|request|` never arrives so `state.mySide`
+  stays `null`. `panel.js` detects this (`isSpectating(s)`) and renders both players' cards side by
+  side labeled with their names. The background service worker buffer (`get-buffer` message) still
+  accumulates all frames; main.js writes them under the `SPEC_` filename scheme above.
 
 ### Config overlays (C4)
 `scripts/apply-overlay.js` copies `overlay/server-config.js` and `overlay/client-config.js` onto the
@@ -153,7 +158,7 @@ server, the same way the upstream testclient does:
 ### Logging system (C7)
 Two cohesive loggers share one line format (`ISO [LEVEL] [ns] msg`), `PS_LOG_LEVEL` threshold, and a
 `logs/debug/` sink: `app/logger.js` (runtime → `app-<ts>.log`) and `scripts/lib/logger.js`
-(orchestration → `<script>-<ts>.log`, plus a `step()` timer). The preload routes its logs to main via
+(orchestration → `<script>-<ts>.log`, plus a `step()` timer). Battle logs land in `logs/battle_info/`. The preload routes its logs to main via
 a `ps-log` IPC channel so renderer/preload lines land in the same app logfile. When extending either
 layer, match the other's format.
 
@@ -171,6 +176,11 @@ contracts (C1–C7 + C-tap) are in `PS-LOCAL-EXTRACTION-GUIDE.md`.
   **both** `psim.us` (official mode — the default) **and** `localhost` (local mode) — the C-tap
   contract — or the Electron log writer silently sees nothing on that path. The same file powers the
   extension, the official-mode tap, and the local-mode tap — don't fork it.
+- **postMessage origins**: `injected.js` posts to `window.location.origin` (not `'*'`). `content.js`
+  posts to the panel iframe using `PANEL_ORIGIN` (derived from `api.runtime.getURL`). `content.js`'s
+  `frameHandler` validates `event.origin === location.origin` — do **not** add an `event.source ===
+  window` check there (MAIN→ISOLATED world delivery gives a different proxy; it silently drops frames).
+  `panel.js` reads the page origin from `?pageOrigin=` in its iframe URL and validates inbound messages.
 - **`helper/` secrets**: never commit `helper/.env` or `helper/extension/data/config.json` (both
   gitignored; gitleaks runs in CI). `build-data.js` no longer writes credentials.
 - **Upstream bumps**: use `npm run update-upstream`; if helper tests fail, an upstream protocol change
