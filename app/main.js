@@ -32,6 +32,8 @@ const CLIENT_PORT = 8080;
 // sandbox: spawn our own server on :8000 and point the bundled testclient at it.
 const MODE = process.env.PS_SERVER === 'local' ? 'local' : 'official';
 const OFFICIAL_URL = 'https://play.pokemonshowdown.com';
+// IANA timezone for the "Generated:" timestamp in rich logs (see .env.example). Default UTC.
+const TIMEZONE = process.env.PS_TIMEZONE || 'UTC';
 
 const log = createLogger('main');
 const slog = createLogger('server');
@@ -107,7 +109,7 @@ function writeLog(roomid, state, rawFrames) {
 
     const raw = rawFrames.join('\n');
     fs.writeFileSync(rawPath, raw);
-    const rich = generateBattleLog(state, rawFrames, movesData); // synchronous
+    const rich = generateBattleLog(state, rawFrames, movesData, TIMEZONE); // synchronous
     fs.writeFileSync(richPath, rich);
 
     wlog.info(`wrote ${richPath} (${rich.length} B) + ${path.basename(rawPath)} (${raw.length} B)`);

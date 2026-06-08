@@ -91,7 +91,7 @@ decoupling is the contractual test — `PS_SYNTHETIC=1`/`PS_NO_EXTENSION=1` prov
 
 ### Shared pure libs
 `helper/extension/lib/parser.js` (`class BattleTracker`, method **`feed(frame)`** — not `consume`) and
-`helper/extension/lib/exporter.js` (`generateBattleLog(state, rawFrames, movesData)` — **synchronous**,
+`helper/extension/lib/exporter.js` (`generateBattleLog(state, rawFrames, movesData, timezone='UTC')` — **synchronous**,
 result strings `YOU WON`/`YOU LOST`/`TIE`/`IN PROGRESS`) are pure ESM with no chrome/browser APIs. They
 are imported by **both** the extension panel and the Electron main process (via dynamic `import()`).
 Keep them dependency-free — coupling them to extension or Node-only APIs breaks the other consumer.
