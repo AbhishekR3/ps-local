@@ -4,20 +4,20 @@ POKEMON SHOWDOWN BATTLE LOG
 Format:    [Gen 9] Random Battle
 Gen:       9
 Game type: singles
-Players:   PlayerOne (you) vs PlayerTwo (opponent)
+Players:   PlayerOne (Player 1) vs PlayerTwo (Player 2)
 Turns:     3
-Result:    YOU WON
+Result:    PlayerOne won
 Generated: <NORMALIZED>
 
 ========================================================================
-YOUR TEAM  (full details from request data)
+PLAYER 1 TEAM  (PlayerOne — full details)
 ========================================================================
   Garchomp  L50 M  |  HP: 100%  |  Item: lifeorb  |  Ability: roughskin  |  Tera: ?
     Stats: HP 356 / Atk 200 / Def 150 / SpA 120 / SpD 130 / Spe 180
     Moves: Earthquake (Ground · Physical · 100 BP)  |  Dragon Claw (Dragon · Physical · 80 BP)  |  Swords Dance (Normal · Status)  |  Fire Fang (Fire · Physical · 65 BP)
 
 ========================================================================
-OPPONENT TEAM  (PlayerTwo — revealed during battle)
+PLAYER 2 TEAM  (PlayerTwo — revealed data only)
 ========================================================================
   Gengar L50  |  Item: ?  |  Ability: ?  |  FAINTED
     Moves seen: Shadow Ball (Ghost · Special · 80 BP)  |  Sludge Bomb (Poison · Special · 90 BP)
@@ -28,24 +28,24 @@ FIELD STATE AT END OF BATTLE
 Weather:      None
 Terrain:      None
 Field effects: None
-Your side (PlayerOne): None
-Opp side (PlayerTwo): None
+P1 side (PlayerOne): None
+P2 side (PlayerTwo): None
 
 ========================================================================
 TURN-BY-TURN BATTLE LOG
 ========================================================================
 
 --- TURN 1 ---
-  You:Garchomp used Earthquake (Ground · Physical · 100 BP) → Opp:p2a [100% → 50%]
-  Opp:Gengar used Shadow Ball (Ghost · Special · 80 BP) → You:p1a [100% → 84%]
+  P1:Garchomp used Earthquake (Ground · Physical · 100 BP) → P2:p2a [100% → 50%]
+  P2:Gengar used Shadow Ball (Ghost · Special · 80 BP) → P1:p1a [100% → 84%]
 
 --- TURN 2 ---
-  You:Garchomp used Dragon Claw (Dragon · Physical · 80 BP) → Opp:p2a [100% → 17%]
-  Opp:Gengar used Sludge Bomb (Poison · Special · 90 BP) → You:p1a [100% → 70%]
+  P1:Garchomp used Dragon Claw (Dragon · Physical · 80 BP) → P2:p2a [100% → 17%]
+  P2:Gengar used Sludge Bomb (Poison · Special · 90 BP) → P1:p1a [100% → 70%]
 
 --- TURN 3 ---
-  You:Garchomp used Fire Fang (Fire · Physical · 65 BP) → Opp:p2a [100% → fainted]
-  *** Opp:Gengar FAINTED ***
+  P1:Garchomp used Fire Fang (Fire · Physical · 65 BP) → P2:p2a [100% → fainted]
+  *** P2:Gengar FAINTED ***
 
 ========================================================================
 RAW PROTOCOL  (complete reference — all WebSocket frames)
@@ -88,8 +88,8 @@ into your LLM of choice. The prompt below instructs the LLM on what to analyze.
 ------------------------------------------------------------------------
 
 The content above is a complete Pokemon Showdown battle log.
-It was played by PlayerOne (labeled "You" throughout) against PlayerTwo (labeled "Opp").
-Format: [Gen 9] Random Battle  |  Result: YOU WON  |  Turns: 3
+Players: PlayerOne (labeled "P1" throughout) vs PlayerTwo (labeled "P2").
+Format: [Gen 9] Random Battle  |  Result: PlayerOne won  |  Turns: 3
 
 Please provide a thorough coaching analysis of this battle. For every claim you
 make, you MUST cite the specific turn number, the move used, and the HP values
@@ -111,21 +111,21 @@ Cover the following, in order:
    Were there moments where a clean winning sequence existed but wasn't taken?
    Walk through the line: turn X do A, then turn X+1 do B, etc.
 
-4. OPPONENT ANALYSIS
-   What was the opponent's win condition? Which of their plays were well-executed?
-   What threats did they set up and how did they try to exploit them?
+4. PLAYER ANALYSIS (both sides)
+   What was each player's win condition? Which plays were well-executed?
+   What threats did each player set up and how did they exploit them?
 
 5. RESOURCE MANAGEMENT
    Evaluate how both sides used: stat boosts (cite the turns), entry hazards,
    weather/terrain, items, and status moves. Was anything wasted or under-utilized?
 
 6. TEAM SYNERGY & COVERAGE
-   Did the team's moves, abilities, and items work together as a unit?
+   Did each team's moves, abilities, and items work together as a unit?
    Were there type matchups or win conditions that went unused? What would have
-   been the optimal sequencing of the team given the opponent's revealed team?
+   been the optimal sequencing given the opponent's revealed team?
 
-7. CONCRETE IMPROVEMENTS (3-5 items)
-   Specific, actionable things the player should do differently next time,
+7. CONCRETE IMPROVEMENTS (3-5 items per player)
+   Specific, actionable things each player should do differently next time,
    each tied to at least one concrete moment from this game as evidence.
 
 Be as detailed as the data supports. The goal is deep, honest coaching —

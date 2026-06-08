@@ -77,14 +77,14 @@ test('BATTLE SUMMARY section contains expected fields', () => {
 	assert.ok(log.includes('POKEMON SHOWDOWN BATTLE LOG'), 'missing header');
 	assert.ok(log.includes('[Gen 9] Random Battle'), 'missing tier');
 	assert.ok(log.includes('Ash') && log.includes('Gary'), 'missing player names');
-	assert.ok(log.includes('YOU WON'), 'missing result');
+	assert.ok(log.includes('Ash won'), 'missing result');
 	assert.ok(log.includes('Turns:'), 'missing turn count');
 });
 
-test('YOUR TEAM section lists all team members with moves', () => {
+test('PLAYER 1 TEAM section lists all team members with moves', () => {
 	const state = buildState();
 	const log = generateBattleLog(state, [BATTLE_FRAMES], MOVES);
-	assert.ok(log.includes('YOUR TEAM'), 'missing section header');
+	assert.ok(log.includes('PLAYER 1 TEAM'), 'missing section header');
 	assert.ok(log.includes('Pikachu'), 'missing Pikachu');
 	assert.ok(log.includes('Charizard'), 'missing Charizard');
 	// Move details should include type/category/BP
@@ -93,10 +93,10 @@ test('YOUR TEAM section lists all team members with moves', () => {
 	assert.ok(log.includes('static'), 'missing ability');
 });
 
-test('OPPONENT TEAM section shows revealed moves and items', () => {
+test('PLAYER 2 TEAM section shows revealed moves and items', () => {
 	const state = buildState();
 	const log = generateBattleLog(state, [BATTLE_FRAMES], MOVES);
-	assert.ok(log.includes('OPPONENT TEAM'), 'missing section header');
+	assert.ok(log.includes('PLAYER 2 TEAM'), 'missing section header');
 	assert.ok(log.includes('Swampert'), 'missing Swampert');
 	assert.ok(log.includes('Leftovers'), 'missing revealed item');
 	assert.ok(log.includes('FAINTED'), 'missing fainted status');
@@ -135,7 +135,7 @@ test('ANALYSIS PROMPT section is present with required coaching questions', () =
 	assert.ok(log.includes('CONCRETE IMPROVEMENTS'), 'missing improvements question');
 	// Prompt should reference the actual player name and result
 	assert.ok(log.includes('Ash'), 'prompt should reference player name');
-	assert.ok(log.includes('YOU WON'), 'prompt should include result');
+	assert.ok(log.includes('Ash won'), 'prompt should include result');
 });
 
 test('generateBattleLog handles empty/minimal state gracefully', () => {
@@ -145,7 +145,7 @@ test('generateBattleLog handles empty/minimal state gracefully', () => {
 	assert.ok(typeof log === 'string');
 	assert.ok(log.includes('POKEMON SHOWDOWN BATTLE LOG'));
 	assert.ok(log.includes('IN PROGRESS'));
-	assert.ok(log.includes('no team data'));
+	assert.ok(log.includes('nothing revealed yet') || log.includes('no team data'));
 });
 
 test('stat boost context appears in turn log when Dragon Dance used', () => {
