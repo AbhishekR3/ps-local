@@ -23,6 +23,7 @@ const browserOnly = {
   Event: 'readonly', KeyboardEvent: 'readonly', MutationObserver: 'readonly', Node: 'readonly',
   Blob: 'readonly', requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
   prompt: 'readonly', alert: 'readonly', confirm: 'readonly',
+  URLSearchParams: 'readonly',
   chrome: 'readonly', // WebExtension API
 };
 
