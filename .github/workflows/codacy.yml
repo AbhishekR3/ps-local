@@ -32,7 +32,17 @@ jobs:
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
 
+      # The CLI emits one SARIF run per tool (eslint, pmd, trivy, …) into a single file. Since
+      # GitHub's 2025-07-22 change, upload-sarif rejects multiple runs that share a category, so we
+      # stamp each run with a distinct automationDetails.id (the category) before uploading.
+      - name: Give each SARIF run a distinct category
+        run: |
+          jq 'reduce range(0; (.runs|length)) as $i
+                (.; .runs[$i].automationDetails.id =
+                  ("codacy/" + (.runs[$i].tool.driver.name // "tool") + "-" + ($i|tostring) + "/"))' \
+            results.sarif > results.fixed.sarif
+
       - name: Upload SARIF to GitHub code scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif
+          sarif_file: results.fixed.sarif
