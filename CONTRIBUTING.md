@@ -57,6 +57,17 @@ Electron app in `PS_SYNTHETIC` mode under Xvfb to assert the end-to-end logging 
 If you intentionally change exporter output, regenerate the golden file:
 `node helper/test/golden.test.js --update`.
 
+### Linting
+
+`eslint.config.js` (flat config, no install needed) sets the right environment per area — Node for
+`app/`/`scripts/`, browser + WebExtension for `helper/extension/`, pure ESM for the shared libs:
+
+```bash
+npx eslint .
+```
+
+Codacy can be pointed at this same config so its ESLint analysis uses the correct globals.
+
 The pure libs `helper/extension/lib/parser.js` and `helper/extension/lib/exporter.js` are imported by
 **both** the Electron main process and the browser extension. Keep them dependency-free — no Node-only
 or chrome/browser APIs — or you break one of the two consumers.

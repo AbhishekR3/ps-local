@@ -33,27 +33,9 @@ function formatBoosts(boostObj) {
 	return parts.join(', ');
 }
 
-function fieldLine(state, mySide) {
-	const parts = [];
-	if (state.weather) parts.push(WEATHER_NAMES[state.weather] || state.weather);
-	if (state.terrain) parts.push(TERRAIN_NAMES[state.terrain] || state.terrain);
-	const opp = mySide === 'p1' ? 'p2' : 'p1';
-	for (const [cond, layers] of Object.entries(state.sideConditions[mySide] || {})) {
-		parts.push(`${cond}${layers > 1 ? ` ×${layers}` : ''} [your side]`);
-	}
-	for (const [cond, layers] of Object.entries(state.sideConditions[opp] || {})) {
-		parts.push(`${cond}${layers > 1 ? ` ×${layers}` : ''} [opp side]`);
-	}
-	for (const cond of Object.keys(state.pseudoWeather)) {
-		parts.push(cond);
-	}
-	return parts.length ? parts.join(' · ') : 'None';
-}
-
 // Render one turn's raw protocol lines into a human-readable narrative.
 // hpBefore tracks HP% at the start of each event for "before→after" annotations.
 function renderTurn(turnNum, lines, mySide, movesData) {
-	const oppSide = mySide === 'p1' ? 'p2' : 'p1';
 	const out = [];
 	// Track HP percentages and owner name per slot for damage annotations.
 	const hp = {};        // slot -> { hp, maxhp } updated as we go
@@ -324,8 +306,7 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 			case '-primal':
 				// Omit noise — these rarely affect strategy analysis.
 				break;
-			// Explicit skip for frame-routing lines.
-			case 'upkeep':
+			// Explicit skip for frame-routing lines. ('upkeep' is already handled above.)
 			case 'request':
 			case 'win':
 			case 'tie':
@@ -353,7 +334,7 @@ function renderTurn(turnNum, lines, mySide, movesData) {
 	return out;
 }
 
-export function generateBattleLog(state, rawFrames, movesData) {
+export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC') {
 	const mySide = state.mySide || 'p1';
 	const oppSide = mySide === 'p1' ? 'p2' : 'p1';
 	const myName = state.players[mySide]?.name || mySide;
@@ -383,7 +364,7 @@ export function generateBattleLog(state, rawFrames, movesData) {
 	lines.push(`Players:   ${myName} (you) vs ${oppName} (opponent)`);
 	lines.push(`Turns:     ${state.turn}`);
 	lines.push(`Result:    ${result}`);
-	lines.push(`Generated: ${new Date().toLocaleString()}`);
+	lines.push(`Generated: ${new Date().toLocaleString('en-US', { timeZone: timezone })}`);
 	lines.push('');
 
 	// ── YOUR TEAM ─────────────────────────────────────────────────────────────
@@ -473,7 +454,6 @@ export function generateBattleLog(state, rawFrames, movesData) {
 		// Replay all frames to rebuild HP state at start of each turn for context.
 		// We walk the turnLog using the same annotation logic as renderTurn.
 		const allSlotNames = {}; // accumulated across turns
-		const allHp = {};        // accumulated hp across turns
 		for (const turn of state.turnLog) {
 			lines.push('');
 			lines.push(`--- TURN ${turn.num} ---`);
