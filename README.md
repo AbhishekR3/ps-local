@@ -3,11 +3,8 @@
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
 [![deep-test](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml)
 [![upstream-canary](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/PROJECT_ID)](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/fe47edfc301e4964990f676c9a1c8125)](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-<!-- Codacy: after connecting the repo on codacy.com, replace PROJECT_ID above with the hash from
-     Codacy → repo Settings → Badge (otherwise the badge image renders broken). -->
 
 An Electron app that **automatically saves a rich battle log for every battle** — a raw protocol dump
 plus a human-readable, LLM-ready analysis — with zero per-battle action. It runs in one of two modes:
@@ -175,15 +172,6 @@ Electron's bundled Chromium ships without Google account/sync services.
 - **Login issues (local mode only).** If login loops or the ProxyPopup appears, the testclient sid is
   stale. Refresh it from `https://play.pokemonshowdown.com/testclient-key.php` (while logged in as
   your account), save to `~/Documents/pokemon-showdown-client/config/testclient-key.js`, and restart.
-
-## Future Work (Phase 2 — deferred)
-
-- [ ] Distribution: electron-builder packaging, code signing/notarization, auto-update (.dmg/.exe)
-- [ ] Multi-OS CI matrix (ubuntu/macos/windows)
-- [x] Headless Electron smoke test in CI (synthetic frame → log file) — `deep-test.yml`
-- [ ] Fully-offline client: vendor the data files the client currently fetches remotely
-- [ ] Deeper protocol-drift detection: diff `sim/SIM-PROTOCOL.md` on upstream bumps
-- [ ] In-app log/replay viewer
 
 ## Contributing
 
