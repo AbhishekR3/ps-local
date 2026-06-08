@@ -2,7 +2,6 @@ import { BattleTracker } from './lib/parser.js';
 import { resolveSetsKey, getBreakdown } from './lib/lookup.js';
 import { loadCore, loadSets, loadItems, loadAbilities, loadTera, loadStats, loadMovesFreq } from './lib/data.js';
 import { api } from './lib/api.js';
-import { generateBattleLog } from './lib/exporter.js';
 
 // Proves the iframe actually loaded and ran panel.js (hypothesis H1).
 console.log('[PSH panel] loaded');
@@ -17,33 +16,17 @@ let currentStats = null;     // pre-nature stat min/max table for the current fo
 let currentMovesFreq = null; // move-frequency table for the current format (may be null)
 let currentSetsKey = null;
 let renderQueued = false;
-const downloadedRooms = new Set(); // roomids already auto-downloaded this panel session
 
 const $format = document.getElementById('format');
 const $content = document.getElementById('content');
 
-document.getElementById('close-btn').addEventListener('click', () => {
-	window.parent.postMessage({ type: 'close-panel' }, '*');
-});
+// The parent (content script) passes its page origin via the iframe URL so we can validate inbound
+// messages and target replies precisely. Falls back to '*' if loaded without it (e.g. standalone).
+const PAGE_ORIGIN = new URLSearchParams(location.search).get('pageOrigin') || '*';
 
-async function triggerDownload(state) {
-	const resp = await api.runtime.sendMessage({ type: 'get-buffer', room: state.roomid || undefined }).catch(() => null);
-	const frames = resp?.frames || [];
-	const text = generateBattleLog(state, frames, core?.moves || {});
-	const blob = new Blob([text], { type: 'text/plain' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	const mySide = state.mySide || 'p1';
-	const oppSide = mySide === 'p1' ? 'p2' : 'p1';
-	const oppName = (state.players[oppSide]?.name || 'opp').replace(/[^a-z0-9]/gi, '');
-	const result = !state.ended ? 'INPROGRESS'
-		: state.winner && state.winner === state.players[mySide]?.name ? 'WIN'
-		: state.winner ? 'LOSS' : 'TIE';
-	a.download = `${state.roomid || 'battle'}_${result}_vs_${oppName}.txt`;
-	a.click();
-	URL.revokeObjectURL(url);
-}
+document.getElementById('close-btn').addEventListener('click', () => {
+	window.parent.postMessage({ type: 'close-panel' }, PAGE_ORIGIN);
+});
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 	{ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -52,7 +35,13 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 function opponentSide() {
 	const me = tracker.state.mySide;
 	if (me) return me === 'p1' ? 'p2' : 'p1';
-	return 'p2'; // sensible default before the first |request| arrives
+	return 'p2';
+}
+
+// True when watching someone else's battle — no |request| ever arrives so mySide stays null,
+// but players and revealed data for both sides are still populated.
+function isSpectating(s) {
+	return s.mySide === null && s.formatId !== null;
 }
 
 // Coalesce bursts of frames into one render per animation frame.
@@ -270,6 +259,40 @@ function myActiveCard(p, team) {
 		</article>`;
 }
 
+function waitingHtml() {
+	return `<p class="hint">No active battle — waiting for the next game…</p>
+<div class="hint-box">
+  <b>Having issues?</b>
+  <ul>
+    <li>Start or accept a battle on the main screen to begin tracking.</li>
+    <li>To watch someone else's battle, open it from the Battle Search tab — the panel shows both players' Pokémon.</li>
+    <li>If the panel is blank mid-battle, press <kbd>Cmd+Shift+H</kbd> to close and reopen it.</li>
+    <li>Battle logs are saved automatically to <code>logs/battle_info/</code> — no manual save needed.</li>
+  </ul>
+</div>`;
+}
+
+// Render one side's active + revealed bench as a labelled section block.
+function renderSideHtml(s, side, label) {
+	const active = Object.values(s.active).filter((p) => p.side === side && !p.fainted);
+	const activeIds = new Set(active.map((p) => idOf(p.species)));
+	const bench = Object.entries(s.revealed[side] || {}).filter(([id]) => !activeIds.has(id));
+	bench.sort(([, a], [, b]) => (a.fainted === b.fainted ? 0 : a.fainted ? 1 : -1));
+
+	let html = `<section><h2>${esc(label)} — active</h2>`;
+	html += active.length
+		? active.map((p) => breakdownCard(p.species, s.revealed[side]?.[idOf(p.species)])).join('')
+		: `<p class="hint">No Pokémon on the field yet.</p>`;
+	html += `</section>`;
+
+	if (bench.length) {
+		html += `<section><h2>${esc(label)} — bench</h2>`;
+		html += bench.map(([, rec]) => breakdownCard(rec.species, rec)).join('');
+		html += `</section>`;
+	}
+	return html;
+}
+
 function render() {
 	const s = tracker.state;
 	console.log('[PSH panel] render formatId=' + s.formatId + ' tier=' + s.tier + ' core=' + !!core);
@@ -277,12 +300,28 @@ function render() {
 	// Room torn down (user left/closed the battle): clear the stale board.
 	if (s.closed) {
 		$format.textContent = 'Waiting for next game…';
-		$content.innerHTML = `<p class="hint">No active battle — waiting for the next game…</p>`;
+		$content.innerHTML = waitingHtml();
 		return;
 	}
 	$format.textContent = s.tier || s.formatId || 'Waiting for a battle…';
 
 	if (!core || !s.formatId) {
+		return;
+	}
+
+	let html = '';
+
+	if (isSpectating(s)) {
+		// Spectator view — no |request| so no mySide; show both players' revealed data.
+		const p1name = s.players.p1?.name || 'Player 1';
+		const p2name = s.players.p2?.name || 'Player 2';
+		if (s.ended) {
+			const winnerLabel = s.winner ? `${esc(s.winner)} wins` : 'Tie';
+			html += `<div class="banner">Battle over — ${winnerLabel}</div>`;
+		}
+		html += renderSideHtml(s, 'p1', p1name);
+		html += renderSideHtml(s, 'p2', p2name);
+		$content.innerHTML = html;
 		return;
 	}
 
@@ -299,7 +338,6 @@ function render() {
 	const myById = {};
 	for (const t of s.myTeam) myById[idOf(t.species)] = t;
 
-	let html = '';
 	if (s.ended) html += `<div class="banner">Battle over — final board</div>`;
 
 	if (myActive.length) {
@@ -330,22 +368,14 @@ function render() {
 // inside an iframe embedded in the PS page — postMessage is reliable in all browsers
 // for this cross-context setup.)
 window.addEventListener('message', (event) => {
+	if (PAGE_ORIGIN !== '*' && event.origin !== PAGE_ORIGIN) return; // only our parent page posts here
 	if (event.data?.type === 'ps-frame') {
 		const isBattle = typeof event.data.data === 'string' && event.data.data.startsWith('>battle-');
-		const wasEnded = tracker.state.ended;
-		const wasClosed = tracker.state.closed;
 		tracker.feed(event.data.data);
 		const s = tracker.state;
 		if (isBattle) {
 			console.log('[PSH panel] ps-frame recv (battle) → state formatId=' + s.formatId +
 				' tier=' + s.tier + ' mySide=' + s.mySide + ' activeCount=' + Object.keys(s.active).length);
-		}
-		// Auto-download on clean end (|win|/|tie|) OR on rage-quit/close (|deinit|, turn >= 1).
-		const justEnded = !wasEnded && s.ended;
-		const justClosed = !wasClosed && s.closed && s.turn >= 1;
-		if ((justEnded || justClosed) && s.roomid && !downloadedRooms.has(s.roomid)) {
-			downloadedRooms.add(s.roomid);
-			triggerDownload(s);
 		}
 		scheduleRender();
 	}
@@ -367,13 +397,6 @@ async function resync(room) {
 	console.log('[PSH panel] resync room=' + (room || '(latest)') + ': buffer frames = ' + (resp?.frames?.length ?? '(null)'));
 	if (resp?.frames?.length) for (const f of resp.frames) tracker.feed(f);
 	console.log('[PSH panel] resync: after feed formatId=' + tracker.state.formatId + ' tier=' + tracker.state.tier);
-	// If the replayed battle ended or was rage-quit and we haven't downloaded it yet, do so now.
-	// This covers the case where the panel was closed when |win|/|tie|/|deinit| arrived.
-	const s = tracker.state;
-	if ((s.ended || (s.closed && s.turn >= 1)) && s.roomid && !downloadedRooms.has(s.roomid)) {
-		downloadedRooms.add(s.roomid);
-		triggerDownload(s);
-	}
 	await ensureSets();
 	render();
 }

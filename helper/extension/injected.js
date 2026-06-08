@@ -42,7 +42,8 @@
 					if (data.startsWith('>battle-')) {
 						console.log('[PSH inject] battle frame #' + (++battleFrames) + ' → postMessage');
 					}
-					window.postMessage({ __psHelper: true, data }, '*');
+					// Same-window relay to the content script — target this page's own origin, not '*'.
+					window.postMessage({ __psHelper: true, data }, window.location.origin);
 				}
 			});
 		}
