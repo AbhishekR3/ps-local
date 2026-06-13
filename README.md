@@ -178,7 +178,97 @@ Electron's bundled Chromium ships without Google account/sync services.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the `vendor/` "never source-edit" rule, how to
 run the tests, and what CI expects from a pull request.
 
+## Features
+
+### Battle Logging
+- **Automatic logging**: every battle is logged with zero per-battle action
+- **Rich format**: human-readable sections (summary, teams, turn log, analysis prompt) plus raw protocol
+- **LLM-ready**: structured format suitable for AI analysis and learning
+- **Spectator support**: logs opponent battles even when you're spectating
+
+### Helper Panel
+- **Live opponent analysis**: predicted Pokémon sets, stats, abilities, and Tera types
+- **Real-time updates**: panel refreshes as the battle progresses
+- **Keyboard toggle**: Cmd+Shift+H to show/hide (or View menu)
+- **Auto-load**: opens automatically when the app starts
+
+### Modes
+- **Official mode** (default): play on the real `play.pokemonshowdown.com` ladder against live opponents
+- **Local mode**: offline sandbox with bundled server and client for testing and experimentation
+
+### Quality & Testing
+- **Smoke tests**: quick validation on every push
+- **Deep tests**: comprehensive suite including golden-file comparison and edge cases
+- **Upstream canary**: weekly check for upstream compatibility, auto-files issues on breaking changes
+- **Code quality**: Codacy analysis on every push with public dashboard
+
+## Advanced Usage
+
+### Environment Variables
+```bash
+PS_LOG_LEVEL=DEBUG          # Enable detailed per-frame logging
+PS_SERVER=local             # Run in local sandbox mode (default: official)
+PS_TESTCLIENT_KEY_PATH=...  # Path to testclient sid file for local-mode login
+PS_SYNTHETIC=1              # Drive test fixtures through the real log path (CI use)
+PS_NO_EXTENSION=1           # Skip loading the helper extension (testing only)
+```
+
+### Custom Builds
+
+Build the data bundle after upstream changes:
+```bash
+cd vendor/pokemon-showdown && npm run build && cd ../..
+cd helper && node build-data.js
+```
+
+### Directory Structure
+```
+app/              → Electron main process + preload + logging
+helper/           → WebSocket tap + parser + exporter + helper extension
+overlay/          → Config overlays applied to vendor submodules
+vendor/           → Pristine git submodules (never source-edit)
+  ├─ pokemon-showdown/
+  └─ pokemon-showdown-client/
+showdown-ui/      → Standalone native-UI alternative client (separate app)
+logs/
+  ├─ battle_info/ → Battle logs (.txt + .raw.txt)
+  └─ debug/       → Debug logs for troubleshooting
+scripts/          → Build and orchestration utilities
+docs/             → Documentation (log format, update workflow, design rationale)
+```
+
+## Extending ps-local
+
+ps-local is designed with clean separation of concerns:
+
+- **The logging path is decoupled from the panel**: battle logs are written even if the extension fails to load (`PS_NO_EXTENSION=1` proves this; `PS_SYNTHETIC=1` proves the end-to-end path).
+- **Vendor submodules remain pristine**: all customizations live in `overlay/`, `app/`, or `helper/`, making upstream updates safe and reproducible.
+- **Pure libs for cross-platform use**: `helper/extension/lib/parser.js` and `exporter.js` have no browser/Node dependencies, so they power both the extension panel and the Electron main process.
+
+For detailed architecture and contracts, see [PS-LOCAL-EXTRACTION-GUIDE.md](docs/PS-LOCAL-EXTRACTION-GUIDE.md) and [CLAUDE.md](CLAUDE.md).
+
+## Roadmap
+
+See [BACKLOG.md](BACKLOG.md) for active work and long-term plans:
+
+- **Current**: stats calculation refinement, multi-platform builds (Linux/Windows), unified test tier
+- **Near-term**: ad removal, persistent Mac Studio monitoring, mobile client support (iOS/Android via WebView)
+- **Future**: Docker containerization, multi-game support, automatic upstream-sync with rollback
+
+## Credits
+
+**ps-local** builds on the excellent open-source work of the **Pokémon Showdown team**:
+
+- **[pokemon-showdown](https://github.com/smogon/pokemon-showdown)** — the competitive Pokémon simulator server powering the entire platform. Countless hours of protocol design, game logic, and community infrastructure.
+- **[pokemon-showdown-client](https://github.com/smogon/pokemon-showdown-client)** — the web client that makes Showdown accessible and enjoyable. Battle UI, login, team building, and real-time communication.
+
+Both projects are published under the MIT license and are essential to this project's operation. ps-local adds **local logging and analysis** on top of this foundation — the core battle simulation, protocol, and UI remain the Showdown team's excellent work.
+
+**Special thanks** to the Showdown community for maintaining such a robust, open platform for Pokémon competitive play.
+
 ## License
 
 [MIT](LICENSE) © Abhishek Ramesh. The wrapped Pokémon Showdown server and client are included only as
 git submodules under `vendor/` and remain under their own (MIT) licenses.
+
+See [Credits](#credits) above for acknowledgment of the Pokémon Showdown team's foundational work.
