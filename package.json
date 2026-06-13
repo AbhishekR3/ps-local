@@ -9,8 +9,12 @@
     "start:local": "cd app && PS_SERVER=local npx electron .",
     "update-upstream": "node scripts/update-upstream.js",
     "apply-overlay": "node scripts/apply-overlay.js",
+    "build:ability-desc": "node scripts/build-ability-descriptions.js",
     "test": "cd helper && node --test",
     "test:smoke": "node helper/test/smoke.mjs",
-    "test:deep": "cd helper && node --test"
+    "test:deep": "cd helper && node --test",
+    "setup:ui": "cd showdown-ui && npm install",
+    "start:ui": "cd showdown-ui && npm run dev",
+    "build:ui": "cd showdown-ui && npm run build"
   }
 }

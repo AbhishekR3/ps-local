@@ -1,5 +1,6 @@
 // Generates a comprehensive human-readable battle log from a BattleState and raw frame buffer.
-// The output is designed to be pasted directly into an LLM for coaching analysis.
+// The output is a self-contained record (summary, teams, field state, turn-by-turn, raw protocol)
+// suitable for archival or downstream analysis.
 import { parseIdent, parseCondition, parseDetails } from './parser.js';
 
 const STAT_NAMES = { atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spd: 'Sp. Def', spe: 'Speed', acc: 'Accuracy', eva: 'Evasion' };
@@ -459,59 +460,6 @@ export function generateBattleLog(state, rawFrames, movesData, timezone = 'UTC')
 		lines.push(frame);
 	}
 	lines.push('');
-
-	// ── ANALYSIS PROMPT ────────────────────────────────────────────────────────
-	lines.push(hr('='));
-	lines.push('LLM ANALYSIS PROMPT');
-	lines.push('Copy everything from the top of this file through this section and paste it');
-	lines.push('into your LLM of choice. The prompt below instructs the LLM on what to analyze.');
-	lines.push(hr('-'));
-	lines.push('');
-	lines.push('The content above is a complete Pokemon Showdown battle log.');
-	lines.push(`Players: ${p1name} (labeled "P1" throughout) vs ${p2name} (labeled "P2").`);
-	lines.push(`Format: ${state.tier || state.formatId || 'Unknown'}  |  Result: ${result}  |  Turns: ${state.turn}`);
-	lines.push('');
-	lines.push('Please provide a thorough coaching analysis of this battle. For every claim you');
-	lines.push('make, you MUST cite the specific turn number, the move used, and the HP values');
-	lines.push('or stat changes from the log that prove your point. Vague observations without');
-	lines.push('evidence are not useful — ground every statement in the data above.');
-	lines.push('');
-	lines.push('Cover the following, in order:');
-	lines.push('');
-	lines.push('1. OUTCOME DRIVERS');
-	lines.push('   What specific decisions, sequences, or events most determined the final result?');
-	lines.push('   Cite the exact turn(s), HP values, and moves involved.');
-	lines.push('');
-	lines.push('2. KEY MISPLAYS (both sides)');
-	lines.push('   For each misplay: name the turn, what happened, what a better option was,');
-	lines.push('   and why the alternative was stronger given the game state at that moment.');
-	lines.push('   Consider move choice, switch timing, Tera activation, and target selection.');
-	lines.push('');
-	lines.push('3. MISSED WINNING LINES');
-	lines.push('   Were there moments where a clean winning sequence existed but wasn\'t taken?');
-	lines.push('   Walk through the line: turn X do A, then turn X+1 do B, etc.');
-	lines.push('');
-	lines.push('4. PLAYER ANALYSIS (both sides)');
-	lines.push('   What was each player\'s win condition? Which plays were well-executed?');
-	lines.push('   What threats did each player set up and how did they exploit them?');
-	lines.push('');
-	lines.push('5. RESOURCE MANAGEMENT');
-	lines.push('   Evaluate how both sides used: stat boosts (cite the turns), entry hazards,');
-	lines.push('   weather/terrain, items, and status moves. Was anything wasted or under-utilized?');
-	lines.push('');
-	lines.push('6. TEAM SYNERGY & COVERAGE');
-	lines.push('   Did each team\'s moves, abilities, and items work together as a unit?');
-	lines.push('   Were there type matchups or win conditions that went unused? What would have');
-	lines.push('   been the optimal sequencing given the opponent\'s revealed team?');
-	lines.push('');
-	lines.push('7. CONCRETE IMPROVEMENTS (3-5 items per player)');
-	lines.push('   Specific, actionable things each player should do differently next time,');
-	lines.push('   each tied to at least one concrete moment from this game as evidence.');
-	lines.push('');
-	lines.push('Be as detailed as the data supports. The goal is deep, honest coaching —');
-	lines.push('not encouragement. Every strength must be earned by the data; every weakness');
-	lines.push('must be proven by a turn reference.');
-	lines.push(hr('='));
 
 	return lines.join('\n');
 }

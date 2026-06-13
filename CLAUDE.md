@@ -34,6 +34,10 @@ npm test                 # helper unit tests (= cd helper && node --test)
 cd helper && node --test test/parser.test.js   # run a single test file
 npm run apply-overlay    # write overlay/*.js onto the gitignored vendor config/config.js targets
 npm run update-upstream  # bump both submodules, rebuild, re-apply overlays, gate on helper tests
+
+npm run setup:ui         # install showdown-ui deps (the separate native-UI Electron app)
+npm run start:ui         # launch showdown-ui (electron-vite dev) — DOES NOT touch app/
+npm run build:ui         # production build of showdown-ui
 ```
 
 Rebuild the panel's static data bundle (slow Monte-Carlo; only after an upstream data change):
@@ -162,11 +166,48 @@ Two cohesive loggers share one line format (`ISO [LEVEL] [ns] msg`), `PS_LOG_LEV
 a `ps-log` IPC channel so renderer/preload lines land in the same app logfile. When extending either
 layer, match the other's format.
 
+### showdown-ui/ — the native-UI alternative client (separate app)
+`showdown-ui/` is a **standalone Electron + React + TypeScript app** (electron-vite, launched via `npm
+run start:ui`) that replaces the floating extension panel with a **native, docked** battle helper. It is
+**completely independent of `app/`** — `npm start` is never affected, so it's a safe sandbox / rollback
+target. It imports the same pure libs from `helper/extension/lib/` (`parser.js`, `lookup.js`) and the
+same `helper/extension/data/**` JSON, so predictions stay identical to the extension.
+
+- **Single cohesive window** (`electron/main/index.ts`): the live `play.pokemonshowdown.com` client is a
+  **`WebContentsView`** overlaying the left region; the React **Battle Helper** panel is docked on the
+  right. The renderer measures the left region and reports its rect over the `set-game-bounds` IPC; main
+  calls `view.setBounds()`. A draggable divider resizes the helper — during the drag the renderer fires
+  `begin-resize`/`end-resize` so main hides the overlay (it would otherwise eat mouse events).
+- **The PS view uses the proven M5 tap config**: `contextIsolation:false` + `electron/preload/ps.ts`,
+  which runs `helper/extension/injected.js` in-world (same as `app/preload.js` official mode). `ps.ts`
+  `ipcRenderer.send('ps-frame')` → **main is now a dumb relay** that forwards every frame to the helper
+  renderer over the same `ps-frame` channel.
+- **Rendering lives in the renderer, mirroring the extension's `panel.js`**: `HelperPanel.tsx` owns a
+  `BattleTracker`, feeds relayed frames, coalesces renders per `requestAnimationFrame`, and renders via
+  `src/lib/render.ts` — a **verbatim port of `panel.js`'s HTML builders** (`breakdownCard`, `statBar`,
+  `moveChip`, `renderSideHtml`, …) injected with `dangerouslySetInnerHTML`. `src/styles/global.css`
+  ports `panel.css`, and `public/icons/categories/*.png` are copied from the extension. **showdown-ui
+  is now the canonical helper UI; `panel.js`/`panel.css` (the extension panel) are frozen-legacy and
+  may visually lag.** `render.ts` originated as a verbatim port but is intentionally allowed to diverge
+  for showdown-ui-only features (no level label, opponent-HP%, ability descriptions, the suppressed
+  "1 sets left" badge). Data-layer fixes still flow to both surfaces via the shared `helper/extension/lib`
+  (e.g. `lookup.js` percentage rounding + cosmetic-forme fallback). Format data is loaded lazily via Vite
+  `import.meta.glob` in `src/lib/data.ts` (mirrors `helper/extension/lib/data.js`).
+- **electron-vite gotcha**: 2.x auto-entry detection only scans `src/`, so `electron.vite.config.ts`
+  must declare main/preload/renderer entries explicitly. The renderer needs `server.fs.allow` widened to
+  the repo root (it imports from `../../../helper/`), and `index.html` must use a **relative** `./src/…`
+  script src. `tsconfig.web.json` sets `allowJs` to import the helper's `.js` libs.
+- Known gaps (carried, not bugs): the tap relays **all** rooms and `feed()` auto-resets on a new roomid,
+  so only the most-recently-active battle is tracked (no foreground-room routing like the extension's
+  `content.js`); no battle-log writing; login is manual (official-mode, like `npm start`) but persists
+  in showdown-ui's own session partition.
+
 ### Directory ownership
 `helper/` = extracted extension + `build-data.js` + tests · `app/` = Electron (main, preload, loggers)
 · `overlay/` + `scripts/apply-overlay.js` = config overlays · `scripts/` = orchestration + root
-`package.json` scripts · `.github/workflows/` = CI · `docs/` = docs. The full design rationale and
-contracts (C1–C7 + C-tap) are in `PS-LOCAL-EXTRACTION-GUIDE.md`.
+`package.json` scripts · `showdown-ui/` = standalone native-UI client (see above), independent of `app/`
+· `.github/workflows/` = CI · `docs/` = docs. The full design rationale and contracts (C1–C7 + C-tap)
+are in `PS-LOCAL-EXTRACTION-GUIDE.md`.
 
 ## When changing things
 

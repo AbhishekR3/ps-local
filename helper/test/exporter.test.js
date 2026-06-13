@@ -126,16 +126,13 @@ test('FIELD STATE section appears', () => {
 	assert.ok(log.includes('Stealth Rock'), 'missing Stealth Rock in side conditions');
 });
 
-test('ANALYSIS PROMPT section is present with required coaching questions', () => {
+test('LLM coaching prompt is not appended to the log', () => {
 	const state = buildState();
 	const log = generateBattleLog(state, [BATTLE_FRAMES], MOVES);
-	assert.ok(log.includes('LLM ANALYSIS PROMPT'), 'missing prompt section');
-	assert.ok(log.includes('OUTCOME DRIVERS'), 'missing outcome drivers question');
-	assert.ok(log.includes('KEY MISPLAYS'), 'missing misplays question');
-	assert.ok(log.includes('CONCRETE IMPROVEMENTS'), 'missing improvements question');
-	// Prompt should reference the actual player name and result
-	assert.ok(log.includes('Ash'), 'prompt should reference player name');
-	assert.ok(log.includes('Ash won'), 'prompt should include result');
+	// The coaching prompt was removed — the log ends at the raw protocol appendix.
+	assert.ok(!log.includes('LLM ANALYSIS PROMPT'), 'analysis prompt should be gone');
+	assert.ok(!log.includes('OUTCOME DRIVERS'), 'coaching questions should be gone');
+	assert.ok(log.includes('RAW PROTOCOL'), 'raw protocol section should remain');
 });
 
 test('generateBattleLog handles empty/minimal state gracefully', () => {

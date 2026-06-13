@@ -45,6 +45,10 @@ for (const id in Pokedex) {
 		types: s.types,
 		baseStats: s.baseStats,
 		abilities: s.abilities,
+		// Cosmetic/alternate formes (Maushold-Four, Tatsugiri-Stretchy, …) carry no random-battle set
+		// data of their own; baseSpecies lets lookup.js fall back to the base form's sets. Only present
+		// on forme entries upstream — base species leave it undefined, which we omit below.
+		...(s.baseSpecies && s.baseSpecies !== s.name ? { baseSpecies: s.baseSpecies } : {}),
 	};
 }
 writeFileSync(join(OUT, 'pokedex.json'), JSON.stringify(pokedex));
