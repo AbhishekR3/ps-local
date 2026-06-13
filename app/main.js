@@ -362,6 +362,16 @@ async function createWindow() {
     : OFFICIAL_URL;
   log.info(`loading window (${MODE}): ${url}`);
   mainWindow.on('closed', () => { mainWindow = null; });
+
+  // Official mode only: collapse any ad slot that slips past the request blocker. did-finish-load
+  // fires on every navigation, so the rule is re-applied as the SPA swaps views.
+  if (MODE !== 'local') {
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.insertCSS(AD_COLLAPSE_CSS).catch((e) =>
+        log.warn(`ad-collapse insertCSS failed: ${e && e.message}`));
+    });
+  }
+
   try {
     await mainWindow.loadURL(url);
   } catch (e) {
@@ -387,6 +397,103 @@ async function loadPanelExtension() {
     // Best-effort: the panel is cosmetic (C3). Logging (C5) is independent.
     log.warn(`loadExtension failed; panel unavailable (logging unaffected): ${e && e.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------- ad / analytics block
+//
+// Official mode wraps the LIVE play.pokemonshowdown.com client, which loads Google ad/analytics and
+// the Playwire video-ad stack. PS is MIT, so blocking ads is permitted; we cancel the requests at
+// the session layer so the ad partners' servers are never even contacted (privacy + no PII leak).
+// The bundled local client has no ad code, so this is gated to official mode (a no-op there anyway).
+//
+// IMPORTANT: this list MUST NOT match play.pokemonshowdown.com, *.pokemonshowdown.com (asset/data
+// CDN fallbacks), sim*.psim.us (battle websockets), or action.php (login). Keep this list in sync
+// with showdown-ui/electron/main/index.ts (AD_ANALYTICS_PATTERNS).
+const AD_ANALYTICS_PATTERNS = [
+  // ── Venatus / PS ad orchestrator ─────────────────────────────────────────
+  // hb.vntsm.com is THE entry point: one <script> in the live PS page that
+  // bootstraps every prebid partner below. Blocking it alone kills the whole
+  // ad stack; the rest are belt-and-suspenders for anything loaded separately.
+  '*://*.vntsm.com/*',               // Venatus Media orchestrator (hb.vntsm.com, cdn1.vntsm.com, …)
+  '*://*.venatus.com/*',             // Venatus first-party domain
+  '*://*.venatusmedia.com/*',
+  // ── Google ad / analytics stack ──────────────────────────────────────────
+  '*://*.doubleclick.net/*',
+  '*://*.googlesyndication.com/*',
+  '*://*.googletagservices.com/*',
+  '*://*.googletagmanager.com/*',
+  '*://*.googleadservices.com/*',
+  '*://*.google-analytics.com/*',
+  '*://*.googleanalytics.com/*',
+  '*://*.analytics.google.com/*',
+  '*://adservice.google.com/*',
+  // ── Microsoft / Bing ads ─────────────────────────────────────────────────
+  '*://*.bat.bing.com/*',            // Microsoft UET / Bing Ads conversion pixel
+  '*://bat.bing.com/*',
+  '*://*.clarity.ms/*',              // Microsoft Clarity analytics/heatmap
+  '*://ads.microsoft.com/*',
+  // ── Prebid bidders loaded by Venatus ─────────────────────────────────────
+  '*://*.amazon-adsystem.com/*',     // Amazon A9 / TAM
+  '*://*.adsrvr.org/*',              // The Trade Desk
+  '*://*.adnxs.com/*',              // Xandr / AppNexus
+  '*://*.criteo.com/*',
+  '*://*.rubiconproject.com/*',      // Magnite / Rubicon
+  '*://*.sharethrough.com/*',
+  '*://*.pubmatic.com/*',
+  '*://*.openx.net/*',
+  '*://*.openx.com/*',
+  '*://*.sovrn.com/*',
+  '*://*.lijit.com/*',               // Sovrn legacy domain
+  '*://*.triplelift.com/*',
+  '*://*.richaudience.com/*',
+  '*://*.id5-sync.com/*',            // ID5 universal ID
+  '*://*.liadm.com/*',               // LiveRamp / IdentityLink
+  '*://*.aniview.com/*',             // Aniview video ads
+  '*://*.4dvertible.com/*',          // 4D programmatic
+  '*://*.bids.ws/*',                 // Venatus bidder endpoint (a.bids.ws)
+  '*://*.smartadserver.com/*',       // Smart AdServer
+  '*://*.rapidedge.io/*',            // RapidEdge audience
+  '*://*.brandmetrics.com/*',        // Brandmetrics brand-lift
+  '*://*.kargo.com/*',
+  '*://*.yieldmo.com/*',
+  '*://*.seedtag.com/*',
+  '*://*.onetag.com/*',              // OneTag SSP (also onetag-sys.com)
+  '*://*.onetag-sys.com/*',
+  // ── Other ad/analytics nets seen in practice ─────────────────────────────
+  '*://*.moatads.com/*',
+  '*://*.scorecardresearch.com/*',
+  '*://*.tapad.com/*',
+  '*://*.cpx.to/*',
+  '*://*.a-mo.net/*',               // Adform DSP
+  // ── Legacy Playwire domains (pre-Venatus) ────────────────────────────────
+  '*://*.intunl.com/*',
+  '*://video-player.playwire.com/*',
+  '*://*.playwire.com/*',
+  '*://*.intergient.com/*',
+  '*://*.pwshowdown.com/*',
+];
+
+// Cosmetic cleanup: collapse any ad slot container that slips past the request blocker so no empty
+// gap remains. insertCSS is a Chromium user stylesheet (CSP-immune, same reasoning as the preload's
+// official-mode WebSocket patch) and applies to dynamically-inserted nodes too.
+const AD_COLLAPSE_CSS = `
+  .pwAd, [class*="playwire"], [id^="pw-"], [id^="google_ads_"],
+  ins.adsbygoogle, iframe[src*="doubleclick"], iframe[src*="googlesyndication"],
+  #leaderboard-ad, .ad-container, .ad-slot, [data-ad] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+`;
+
+function installAdBlock(targetSession) {
+  targetSession.webRequest.onBeforeRequest({ urls: AD_ANALYTICS_PATTERNS }, (details, cb) => {
+    log.debug(`adblock cancel: ${details.url}`);
+    cb({ cancel: true });
+  });
+  log.info(`ad/analytics block installed (${AD_ANALYTICS_PATTERNS.length} patterns)`);
 }
 
 // ---------------------------------------------------------------------------- menu
@@ -508,6 +615,8 @@ app.whenReady().then(async () => {
     await startServer();
   } else {
     log.info('official mode — connecting to the live PS ladder (no local server/static)');
+    // Block ads/analytics on the default session before the window's first loadURL.
+    installAdBlock(session.defaultSession);
   }
   await loadPanelExtension(); // before window so content scripts apply on first load
   await createWindow();

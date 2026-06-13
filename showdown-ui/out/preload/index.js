@@ -8,6 +8,9 @@ electron.contextBridge.exposeInMainWorld("psUI", {
   offFrame: () => {
     electron.ipcRenderer.removeAllListeners("ps-frame");
   },
+  // Replay buffered frames for the most-recently-active room — called on mount so a battle
+  // whose init frames preceded the renderer is reconstructed instead of lost.
+  getBuffer: () => electron.ipcRenderer.invoke("get-buffer"),
   setGameBounds: (rect) => {
     electron.ipcRenderer.send("set-game-bounds", rect);
   },

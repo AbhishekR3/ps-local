@@ -159,6 +159,15 @@ server, the same way the upstream testclient does:
   Do **not** reintroduce a MAIN-world guest-login bypass in the preload (a removed `inject-localfix.js`
   did this by forcing `/trn name,0,` — it blocks real-account login).
 
+### Ad / analytics blocking
+`app/main.js` installs a session-layer ad blocker in **official mode only**, before the window loads. It uses `session.defaultSession.webRequest.onBeforeRequest` to cancel requests to `AD_ANALYTICS_PATTERNS` — a ~56-entry list covering Venatus (PS's ad orchestrator, `hb.vntsm.com`), Google ad/analytics stack, Microsoft/Bing UET + Clarity, and all prebid bidder partners. A companion `insertCSS` on `did-finish-load` collapses any ad slot that slips through.
+
+`showdown-ui/electron/main/index.ts` mirrors the **identical** blocklist on `session.fromPartition('persist:showdown-ui')` (the `psView`'s partition, not `defaultSession`). Both copies must stay textually in sync — the cross-reference comment in each file names the other. Do **not** factor them into a shared module: `app/` is CommonJS-from-source; `showdown-ui` main is electron-vite-bundled TS, so a cross-build import is fragile.
+
+The blocklist is allow-by-default: only matching hosts are cancelled. It must never match `play.pokemonshowdown.com`/`*.pokemonshowdown.com` (client + CDN fallbacks), `sim*.psim.us` (battle websockets), or `action.php` (login).
+
+To discover new ad domains: `curl -s https://hb.vntsm.com/v4/live/vms/sites/pokemonshowdown.com/index.js` — this is the single orchestrator script PS injects; it lists every prebid partner inline.
+
 ### Logging system (C7)
 Two cohesive loggers share one line format (`ISO [LEVEL] [ns] msg`), `PS_LOG_LEVEL` threshold, and a
 `logs/debug/` sink: `app/logger.js` (runtime → `app-<ts>.log`) and `scripts/lib/logger.js`

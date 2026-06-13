@@ -149,8 +149,9 @@ cd helper && node build-data.js
 - **official mode** connects to the real Pokémon Showdown servers (you're playing real people), so
   battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. Only
   the **logging** is local — the tap writes your battles to `logs/` on disk; nothing extra is uploaded.
-  The site's normal third-party ad trackers load as they would in any browser; they cannot read IPC or
-  the `logs/` directory.
+  Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus/Playwire, and ~50 prebid
+  partners) are **cancelled at the Electron session layer** before they leave the machine — the ad
+  partners' servers are never contacted. PS is MIT-licensed, so this is permitted.
 - **local mode** plays against your own machine. **One caveat:** the bundled `testclient-old.html`
   loads `config.js` from the public site, and any data file the local build didn't emit falls back to
   fetching from `play.pokemonshowdown.com` (`loadRemoteData`), so first load touches the public site
@@ -252,7 +253,7 @@ For detailed architecture and contracts, see [PS-LOCAL-EXTRACTION-GUIDE.md](docs
 See [BACKLOG.md](BACKLOG.md) for active work and long-term plans:
 
 - **Current**: stats calculation refinement, multi-platform builds (Linux/Windows), unified test tier
-- **Near-term**: ad removal, persistent Mac Studio monitoring, mobile client support (iOS/Android via WebView)
+- **Near-term**: persistent Mac Studio monitoring, mobile client support (iOS/Android via WebView)
 - **Future**: Docker containerization, multi-game support, automatic upstream-sync with rollback
 
 ## Credits
