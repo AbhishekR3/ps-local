@@ -18,9 +18,28 @@ const fs = require('node:fs');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
-const { createLogger } = require('./logger');
 
 const repoRoot = path.join(__dirname, '..');
+
+// User preferences live in config.json at the repo root (config.example.json is the committed
+// template; config.json is gitignored). Read it BEFORE requiring the logger: logger.js resolves its
+// level threshold from PS_LOG_LEVEL at import time, so config.logLevel must be promoted to the env
+// here first. An explicit env var still wins, so `PS_LOG_LEVEL=DEBUG npm start` overrides the file.
+let configWarning = null; // surfaced via the logger once it exists (loadConfig runs before it does)
+function loadConfig(root) {
+  const defaults = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true };
+  try {
+    return { ...defaults, ...JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')) };
+  } catch (e) {
+    // Missing config.json is expected (first run / CI); only a malformed one is worth flagging.
+    if (e.code !== 'ENOENT') configWarning = `config.json invalid (${e.message}) — using defaults`;
+    return defaults;
+  }
+}
+const config = loadConfig(repoRoot);
+if (config.logLevel && !process.env.PS_LOG_LEVEL) process.env.PS_LOG_LEVEL = config.logLevel;
+
+const { createLogger } = require('./logger');
 const CLIENT_ROOT = path.join(repoRoot, 'vendor', 'pokemon-showdown-client', 'play.pokemonshowdown.com');
 const SERVER_BIN = path.join(repoRoot, 'vendor', 'pokemon-showdown', 'pokemon-showdown');
 const LOGS_DIR = path.join(repoRoot, 'logs', 'battle_info');
@@ -32,13 +51,15 @@ const CLIENT_PORT = 8080;
 // sandbox: spawn our own server on :8000 and point the bundled testclient at it.
 const MODE = process.env.PS_SERVER === 'local' ? 'local' : 'official';
 const OFFICIAL_URL = 'https://play.pokemonshowdown.com';
-// IANA timezone for the "Generated:" timestamp in rich logs (see .env.example). Default UTC.
-const TIMEZONE = process.env.PS_TIMEZONE || 'UTC';
+// IANA timezone for the "Generated:" timestamp in rich logs (see config.json). Default UTC.
+const TIMEZONE = process.env.PS_TIMEZONE || config.timezone;
 
 const log = createLogger('main');
 const slog = createLogger('server');
 const httpd = createLogger('static');
 const wlog = createLogger('writelog');
+
+if (configWarning) log.warn(configWarning);
 
 let serverProc = null;
 let staticServer = null;
@@ -95,6 +116,12 @@ function sanitize(name) {
 }
 
 function writeLog(roomid, state, rawFrames) {
+  // saveLogs:false (config.json) disables disk writes entirely — useful for spectating/testing
+  // without leaving files behind. The tracker still runs; we just skip the .txt/.raw.txt output.
+  if (!config.saveLogs) {
+    wlog.debug(`saveLogs=false — skipping log write for ${roomid} (turn=${state.turn})`);
+    return;
+  }
   try {
     fs.mkdirSync(LOGS_DIR, { recursive: true });
 

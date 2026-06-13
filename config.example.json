@@ -1,0 +1,7 @@
+{
+  "_about": "User preferences for the main app (app/main.js). Copy this file to config.json (gitignored) and edit. Environment variables (PS_LOG_LEVEL, PS_TIMEZONE) still override these at runtime for scripting.",
+  "_credentials": "Nothing credential-related is configured here. In official mode you log in through the live client UI and Electron persists the session automatically (default session, disk-backed) across restarts. In local mode (PS_SERVER=local) the app reads a testclient sid from ~/Documents/pokemon-showdown-client/config/testclient-key.js (override path with PS_TESTCLIENT_KEY_PATH). There is no password or token to put in this file.",
+  "timezone": "America/Los_Angeles",
+  "logLevel": "INFO",
+  "saveLogs": true
+}

@@ -1,0 +1,135 @@
+/* ─── Design tokens ──────────────────────────────────────────────── */
+/* App-shell tokens (header, columns, divider) + the exact extension-panel
+   tokens (--bg/--panel/--panel2/--line) so ported markup matches 1:1. */
+:root {
+  --bg-base:    #1c1f26;
+  --bg-card:    #22262f;
+  --bg-panel:   #2e333d;
+  --bg-header:  #20242d;
+  --text:       #e7e9ee;
+  --muted:      #9aa1ad;
+  --subtle:     #5a6070;
+  --border:     #3a3f4b;
+  --accent:     #6ea8fe;
+
+  /* ── extension panel.css tokens (verbatim) ── */
+  --bg:     #1c1f26;
+  --panel:  #262a33;
+  --panel2: #2e333d;
+  --line:   #3a3f4b;
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-base);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Battle-helper panel — ported verbatim from helper/extension/panel.css
+   so the native UI matches the extension exactly.
+   ══════════════════════════════════════════════════════════════════ */
+
+.ps-helper { padding: 10px 12px 24px; }
+.ps-format { font-weight: 600; color: var(--accent); margin-bottom: 10px; }
+
+.hint { color: var(--muted); font-size: 12px; }
+.hint-box { margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: rgba(255,255,255,.04); font-size: 12px; color: var(--muted); }
+.hint-box ul { margin: 6px 0 0; padding-left: 16px; }
+.hint-box li { margin-bottom: 5px; line-height: 1.5; }
+.hint-box kbd, .hint-box code { background: rgba(255,255,255,.1); border-radius: 3px; padding: 1px 4px; font-size: 11px; }
+
+.ps-helper section { margin-bottom: 16px; }
+.ps-helper h2 {
+  margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted);
+}
+
+.mine { display: flex; flex-wrap: wrap; gap: 6px; }
+.mine-mon { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+.mine-mon .hp { color: var(--muted); }
+.mine-card { border-color: var(--accent); }
+.card-head .hp { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+.banner {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 10px; margin-bottom: 12px; color: #ffd479; font-weight: 600;
+}
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px; margin-bottom: 10px;
+}
+.card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card-head .name { font-size: 15px; font-weight: 700; }
+.types, .moves { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+.known { margin: 6px 0; font-size: 12px; color: #ffd479; }
+.ability-desc { margin: 2px 0 6px; font-size: 11px; color: var(--muted); line-height: 1.3; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; margin: 8px 0; }
+.stat { display: grid; grid-template-columns: 30px 1fr 26px; align-items: center; gap: 6px; }
+.stat-l { color: var(--muted); font-size: 11px; }
+.stat-v { text-align: right; font-variant-numeric: tabular-nums; }
+.stat-bar { height: 7px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.stat-bar i { display: block; height: 100%; }
+
+.row { margin: 4px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row .k { color: var(--muted); font-size: 11px; min-width: 96px; }
+.pill { background: var(--panel2); border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+
+.sets { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.set { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
+.role { font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+.nodata { color: var(--muted); font-size: 12px; }
+
+.move {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 6px; font-size: 12px;
+}
+.move.cat-status { opacity: .85; }
+.move .cat-icon { height: 12px; width: auto; image-rendering: pixelated; vertical-align: middle; }
+.move.used { border-color: var(--accent); background: #2b3340; box-shadow: 0 0 0 1px var(--accent) inset; }
+
+.set.confirmed { box-shadow: 0 0 0 1px var(--accent) inset; }
+.role .match { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.match { color: var(--muted); font-size: 10px; }
+.confirmed-tag {
+  background: #1f3a2a; color: #7fe0a0; border-radius: 4px;
+  padding: 0 5px; font-size: 10px; font-weight: 700;
+}
+.pill .muted { color: var(--muted); }
+
+.card.fainted { opacity: .55; }
+.fnt-tag {
+  background: #5a2a2a; color: #ff9b9b; border-radius: 4px;
+  padding: 0 5px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+
+.type {
+  display: inline-block; padding: 0 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase;
+}
+.t-normal{background:#9099a1}.t-fire{background:#ff6b3d}.t-water{background:#3692dc}
+.t-electric{background:#e5c100}.t-grass{background:#4fa452}.t-ice{background:#5fc7d8}
+.t-fighting{background:#cf3f6a}.t-poison{background:#a864c8}.t-ground{background:#d97f3d}
+.t-flying{background:#8aa9e0}.t-psychic{background:#f8537f}.t-bug{background:#9aab2c}
+.t-rock{background:#bba84f}.t-ghost{background:#6b5a9c}
+.t-dragon{background:#5a52d0}.t-dark{background:#5a5160}.t-steel{background:#5a8ea1}
+.t-fairy{background:#ec8fe6}.t-stellar{background:#5fae9a}

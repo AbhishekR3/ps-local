@@ -26,7 +26,9 @@ const log = generateBattleLog(tracker.state, frames, {});
 assert.ok(typeof log === 'string' && log.length > 0, 'log is empty');
 assert.match(log, /POKEMON SHOWDOWN BATTLE LOG/, 'missing summary header');
 assert.match(log, /TURN-BY-TURN/, 'missing TURN-BY-TURN section');
-assert.match(log, /LLM ANALYSIS PROMPT/, 'missing analysis prompt section');
+assert.match(log, /RAW PROTOCOL/, 'missing RAW PROTOCOL section');
+// The LLM coaching prompt was removed — the log must no longer carry it.
+assert.doesNotMatch(log, /LLM ANALYSIS PROMPT/, 'analysis prompt should be gone');
 // sample-battle.txt ends in |win|PlayerOne — result must resolve, not stay IN PROGRESS.
 assert.match(log, /\bwon\b|TIE/, 'result not resolved from a finished battle');
 

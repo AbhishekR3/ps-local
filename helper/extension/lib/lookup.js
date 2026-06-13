@@ -111,55 +111,65 @@ function tallyByRole(byRole, relevantSets) {
 	return { totals, grand };
 }
 
-// Top-3 likely items for a species, summed over the roles of the still-relevant sets so the
-// prediction sharpens as revealed moves narrow the set. itemsData shape: see build-data.js.
-function predictItems(itemsData, id, relevantSets) {
-	const byRole = itemsData?.[id];
-	if (!byRole) return [];
-	// Prefer the relevant roles; if they carry no data, fall back to every role for the species.
+// Assign integer percentages summing to exactly 100 across the WHOLE distribution using the
+// largest-remainder (Hamilton) method — independent Math.round() per entry can otherwise make a set
+// total 99 or 101. `sortedEntries` is [key, count][] pre-sorted by count desc (that order also breaks
+// remainder ties toward the higher count). Returns the same order with an integer `pct`. Slicing the
+// result to a top-N afterward stays faithful: the prefix sums to <=100 and never exceeds 100.
+function largestRemainderPct(sortedEntries, grand) {
+	const rows = sortedEntries.map(([key, count]) => {
+		const exact = (count / grand) * 100;
+		const floor = Math.floor(exact);
+		return { key, count, pct: floor, rem: exact - floor };
+	});
+	let leftover = 100 - rows.reduce((s, r) => s + r.pct, 0);
+	// Hand the leftover whole points to the largest remainders (ties -> higher count).
+	for (const r of [...rows].sort((a, b) => (b.rem - a.rem) || (b.count - a.count))) {
+		if (leftover <= 0) break;
+		r.pct += 1;
+		leftover -= 1;
+	}
+	return rows;
+}
+
+// Resolve the count distribution for a species across the still-relevant sets, falling back to all
+// roles when the relevant ones carry no data. Returns the sorted [key, count][] and the grand total.
+function distributionFor(byRole, relevantSets) {
 	let { totals, grand } = tallyByRole(byRole, relevantSets);
 	if (!grand) {
 		// Fallback: tally all roles as synthetic single-role sets.
 		const allRoleSets = Object.keys(byRole).map((r) => ({ role: r, _roles: [r] }));
 		({ totals, grand } = tallyByRole(byRole, allRoleSets));
 	}
-	if (!grand) return [];
-	return Object.entries(totals)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 3)
-		.map(([item, count]) => ({ item, pct: Math.round((count / grand) * 100) }));
+	return { sorted: Object.entries(totals).sort((a, b) => b[1] - a[1]), grand };
 }
 
-// Top-3 likely tera types, weighted by Monte Carlo frequency across relevant sets.
+// Top-3 likely items for a species, summed over the roles of the still-relevant sets so the
+// prediction sharpens as revealed moves narrow the set. itemsData shape: see build-data.js.
+function predictItems(itemsData, id, relevantSets) {
+	const byRole = itemsData?.[id];
+	if (!byRole) return [];
+	const { sorted, grand } = distributionFor(byRole, relevantSets);
+	if (!grand) return [];
+	return largestRemainderPct(sorted, grand).slice(0, 3).map((r) => ({ item: r.key, pct: r.pct }));
+}
+
+// Top-5 likely tera types, weighted by Monte Carlo frequency across relevant sets.
 function predictTeras(teraData, id, relevantSets) {
 	const byRole = teraData?.[id];
 	if (!byRole) return [];
-	let { totals, grand } = tallyByRole(byRole, relevantSets);
-	if (!grand) {
-		const allRoleSets = Object.keys(byRole).map((r) => ({ role: r, _roles: [r] }));
-		({ totals, grand } = tallyByRole(byRole, allRoleSets));
-	}
+	const { sorted, grand } = distributionFor(byRole, relevantSets);
 	if (!grand) return [];
-	return Object.entries(totals)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 5)
-		.map(([teraType, count]) => ({ teraType, pct: Math.round((count / grand) * 100) }));
+	return largestRemainderPct(sorted, grand).slice(0, 5).map((r) => ({ teraType: r.key, pct: r.pct }));
 }
 
 // Top-3 likely abilities for a species, weighted by Monte Carlo frequency across relevant sets.
 function predictAbilities(abilitiesData, id, relevantSets) {
 	const byRole = abilitiesData?.[id];
 	if (!byRole) return [];
-	let { totals, grand } = tallyByRole(byRole, relevantSets);
-	if (!grand) {
-		const allRoleSets = Object.keys(byRole).map((r) => ({ role: r, _roles: [r] }));
-		({ totals, grand } = tallyByRole(byRole, allRoleSets));
-	}
+	const { sorted, grand } = distributionFor(byRole, relevantSets);
 	if (!grand) return [];
-	return Object.entries(totals)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 3)
-		.map(([ability, count]) => ({ ability, pct: Math.round((count / grand) * 100) }));
+	return largestRemainderPct(sorted, grand).slice(0, 3).map((r) => ({ ability: r.key, pct: r.pct }));
 }
 
 /**
@@ -172,7 +182,17 @@ function predictAbilities(abilitiesData, id, relevantSets) {
 export function getBreakdown(species, data, revealedMoves = null) {
 	const id = toID(species);
 	const dex = data.pokedex[id] || null;
-	const entry = normalizeEntry(data.sets ? data.sets[id] : null);
+	// Cosmetic/alternate formes (Maushold-Four, Tatsugiri-Stretchy, …) ship no random-battle data under
+	// their own id. When that happens, fall back to the base species' id (from the dex `baseSpecies`
+	// field) for every set-derived lookup — sets, items, abilities, teras, movesFreq, and the MC stats
+	// (which render.ts keys off the returned `id`). `id` itself still names the forme for display.
+	let dataId = id;
+	let entry = normalizeEntry(data.sets ? data.sets[id] : null);
+	if (!entry && dex?.baseSpecies) {
+		const baseId = toID(dex.baseSpecies);
+		const baseEntry = normalizeEntry(data.sets ? data.sets[baseId] : null);
+		if (baseEntry) { dataId = baseId; entry = baseEntry; }
+	}
 	const revealed = revealedMoves instanceof Set ? revealedMoves : new Set(revealedMoves || []);
 	const revealedCount = revealed.size;
 
@@ -205,11 +225,11 @@ export function getBreakdown(species, data, revealedMoves = null) {
 	// Annotate each set with move frequencies and role frequency from Monte Carlo data.
 	// roleFreq: % of samples where this species was assigned this role (or merged roles).
 	// mv.freq: % of times this role rolled this move in its 4-move selection.
-	if (data.movesFreq?.[id]) {
-		const allRoleData = data.movesFreq[id];
+	if (data.movesFreq?.[dataId]) {
+		const allRoleData = data.movesFreq[dataId];
 		const speciesTotal = Object.values(allRoleData).reduce((s, r) => s + (r.total || 0), 0);
 		for (const set of sets) {
-			const mfd = moveFreqForSet(data.movesFreq, id, set);
+			const mfd = moveFreqForSet(data.movesFreq, dataId, set);
 			if (mfd && speciesTotal) {
 				set.roleFreq = Math.round(mfd.total / speciesTotal * 100);
 				for (const mv of set.moves) {
@@ -236,7 +256,7 @@ export function getBreakdown(species, data, revealedMoves = null) {
 	const dexAbilities = dex ? Object.values(dex.abilities) : [];
 
 	return {
-		id,
+		id: dataId,
 		name: dex ? dex.name : species,
 		num: dex ? dex.num : 0,
 		types: dex ? dex.types : [],
@@ -250,9 +270,9 @@ export function getBreakdown(species, data, revealedMoves = null) {
 		revealedCount,
 		lowConfidence,
 		confirmed,
-		predictedItems: predictItems(data.items, id, relevant),
-		predictedAbilities: predictAbilities(data.abilities, id, relevant),
-		predictedTeras: predictTeras(data.teras, id, relevant),
+		predictedItems: predictItems(data.items, dataId, relevant),
+		predictedAbilities: predictAbilities(data.abilities, dataId, relevant),
+		predictedTeras: predictTeras(data.teras, dataId, relevant),
 		found: !!entry,
 	};
 }
