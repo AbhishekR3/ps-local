@@ -5,7 +5,8 @@
   "engines": { "node": ">=22.6.0" },
   "scripts": {
     "setup": "node scripts/setup.js",
-    "start": "cd app && npx electron .",
+    "start": "cd showdown-ui && npm run dev",
+    "start:legacy": "cd app && npx electron .",
     "start:local": "cd app && PS_SERVER=local npx electron .",
     "update-upstream": "node scripts/update-upstream.js",
     "apply-overlay": "node scripts/apply-overlay.js",
@@ -14,7 +15,6 @@
     "test:smoke": "node helper/test/smoke.mjs",
     "test:deep": "cd helper && node --test",
     "setup:ui": "cd showdown-ui && npm install",
-    "start:ui": "cd showdown-ui && npm run dev",
     "build:ui": "cd showdown-ui && npm run build"
   }
 }

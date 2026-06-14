@@ -59,6 +59,18 @@ export default function HelperPanel() {
       scheduleRender()
     }
 
+    // Register the live listener FIRST so no frame arriving during the async replay below is lost,
+    // then replay the buffer. feed() is idempotent within a room, so re-applying buffered frames
+    // after a live one just rebuilds the same state — the point is to recover the once-only
+    // |init|/|request| frames that may have been emitted before this component mounted.
+    window.psUI.onFrame(onFrame)
+    window.psUI.getBuffer?.().then((buf) => {
+      if (cancelled || !buf?.frames?.length) return
+      for (const f of buf.frames) trackerRef.current.feed(f)
+      console.log('[PSH ui] replayed ' + buf.frames.length + ' buffered frames on mount (room=' + buf.room + ')')
+      scheduleRender()
+    }).catch(() => {})
+
     // Load core data once, then render the waiting state and start taking frames.
     loadCore().then((c) => {
       if (cancelled) return
@@ -66,7 +78,6 @@ export default function HelperPanel() {
       scheduleRender()
     })
 
-    window.psUI.onFrame(onFrame)
     return () => {
       cancelled = true
       window.psUI.offFrame()

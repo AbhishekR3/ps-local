@@ -264,6 +264,12 @@ if (!document.getElementById('__ps-helper-wrap')) {
 }
 
 // --- WebSocket bridge ---------------------------------------------------------
+// The most recent battle roomid seen on the wire. The PS client sometimes routes a battle
+// without changing location.pathname/hash in the form foregroundRoom() matches (client-version
+// quirks, tab focus without nav). When URL detection misses, this wire-derived roomid is the
+// implicit foreground so the panel still gets fed and never sits blank mid-battle.
+let lastWireRoom = null;
+
 function frameHandler(event) {
 	if (dead) return;
 	if (event.origin !== location.origin) return; // only the page's own MAIN-world tap posts here
@@ -279,12 +285,30 @@ function frameHandler(event) {
 	// Buffer EVERY room in the background (survives panel open/close and SW restart).
 	safeSend({ type: 'ps-frame', data: msg.data });
 
+	// First frame of a battle room we haven't told the panel about yet → kick a resync for it,
+	// regardless of whether the URL has updated. This is what makes "open the panel before the
+	// game starts" populate the moment the game's first frame hits the tap, instead of waiting
+	// on the 700ms URL poller (which never fires if the client routes without a URL change).
+	if (room && room !== lastWireRoom) {
+		lastWireRoom = room;
+		if (room !== lastForeground) {
+			lastForeground = room;
+			console.log('[PSH content] first wire frame for ' + room + ' → room-changed (url fg=' + foregroundRoom() + ')');
+			panelFrame?.contentWindow?.postMessage({ type: 'room-changed', room }, PANEL_ORIGIN);
+		}
+	}
+
 	// Forward live for the room the user is currently viewing, so a second open battle can't
-	// interleave frames into the panel and corrupt its state. If we can't determine the
-	// foreground room (unknown client routing), fall back to forwarding so we never go blind.
-	const fg = foregroundRoom();
-	if (room && (room === fg || !fg)) {
+	// interleave frames into the panel and corrupt its state. When the URL gives us a foreground
+	// room, scope to it; when it doesn't (unknown client routing), fall back to the room last seen
+	// on the wire so a single active battle still feeds the panel instead of going blind.
+	const fg = foregroundRoom() || lastWireRoom;
+	const forwarded = !!room && (room === fg || !fg);
+	if (forwarded) {
 		panelFrame?.contentWindow?.postMessage({ type: 'ps-frame', data: msg.data }, PANEL_ORIGIN);
+	} else if (room) {
+		// Sampled: log only when we DROP a battle frame (the interesting/diagnostic case).
+		console.log('[PSH content] dropped frame room=' + room + ' fg=' + fg);
 	}
 }
 window.addEventListener('message', frameHandler);

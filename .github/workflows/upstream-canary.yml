@@ -38,18 +38,7 @@ jobs:
 
       - name: Protocol smoke
         id: smoke
-        run: |
-          node --input-type=module <<'EOF'
-          import { BattleTracker } from './helper/extension/lib/parser.js';
-          import { generateBattleLog } from './helper/extension/lib/exporter.js';
-          import { readFileSync } from 'node:fs';
-          const frames = readFileSync('./helper/test/fixtures/sample-battle.txt', 'utf8').split('\n');
-          const tracker = new BattleTracker();
-          for (const line of frames) tracker.feed(line);
-          const log = generateBattleLog(tracker.state, frames, {});
-          if (!log.includes('POKEMON SHOWDOWN BATTLE LOG')) process.exit(1);
-          if (!log.includes('TURN-BY-TURN')) process.exit(1);
-          EOF
+        run: npm run test:smoke
         continue-on-error: true
 
       - name: File issue on failure
@@ -64,10 +53,27 @@ jobs:
             const broken = [];
             if (!testsOk) broken.push('helper unit tests');
             if (!smokeOk) broken.push('protocol smoke');
+
+            // Ensure the label exists before filing the issue (creates it if absent).
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'upstream-breakage',
+              });
+            } catch {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'upstream-breakage',
+                color: 'd93f0b',
+              });
+            }
+
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `[upstream-canary] Breakage detected: ${broken.join(', ')}`,
               body: `## Upstream canary failed\n\n**Broken:** ${broken.join(', ')}\n\n**Submodule SHAs at failure:**\n- pokemon-showdown: \`${serverSha}\`\n- pokemon-showdown-client: \`${clientSha}\`\n\nRun \`npm run update-upstream\` locally to investigate.`,
-              labels: ['upstream-breakage']
+              labels: ['upstream-breakage'],
             });

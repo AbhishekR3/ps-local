@@ -7,30 +7,24 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An Electron app that **automatically saves a rich battle log for every battle** — a raw protocol dump
-plus a human-readable, LLM-ready analysis — with zero per-battle action. It runs in one of two modes:
-
-- **official** (default): wraps the live `play.pokemonshowdown.com` client, so you play the **real
-  ladder against real people** logged into your own account, and every battle is logged locally.
-- **local** (`PS_SERVER=local`): an offline sandbox — spawns the bundled PS server + client and plays
-  against your own machine. The two upstream repos are wrapped as **pristine git submodules**.
+plus a human-readable, LLM-ready analysis — with zero per-battle action. Play on the live
+`play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel.
 
 ## Architecture
 
 ```
-Electron main (app/main.js)
-  ├─ [local mode only] child process: pokemon-showdown server   (port 8000)
-  ├─ [local mode only] static http server: client subdir        (port 8080)
-  ├─ BrowserWindow
-  │     ├─ official: → https://play.pokemonshowdown.com         (contextIsolation:false)
-  │     └─ local:    → http://localhost:8080/testclient-old.html?~~localhost:8000
-  │     └─ preload.js: installs the WebSocket tap → postMessage
-  │                    → ps-frame IPC → main → BattleTracker + generateBattleLog → logs/
-  └─ session.loadExtension(helper/extension)                    (best-effort visual panel; off the logging path)
+showdown-ui/electron/main/index.ts
+  ├─ BrowserWindow (React helper panel — right side)
+  │     └─ preload/index.ts: exposes psUI API to renderer
+  ├─ WebContentsView (psView — left side, live play.pokemonshowdown.com)
+  │     └─ preload/ps.ts: installs WebSocket tap → postMessage → ps-frame IPC
+  ├─ main: receives ps-frame → BattleTracker + generateBattleLog → logs/battle_info/
+  └─ session ad-block: cancels ~55 ad/analytics domains before they leave the machine
 ```
 
-The log writer (the WebSocket tap → parser → exporter → `logs/`) is **independent of the extension** —
-battle logs are written even with the panel disabled. The tap matches both `psim.us` (official) and
-`localhost` (local).
+The log writer (tap → parser → exporter → `logs/`) runs in the Electron main process. The React helper
+panel renders opponent breakdowns (predicted sets, stats, abilities, tera) in the renderer. Both use the
+same shared pure libs from `helper/extension/lib/`.
 
 ## Prerequisites
 
@@ -40,43 +34,36 @@ battle logs are written even with the panel disabled. The tap matches both `psim
 | npm | ≥ 10 |
 | Git | any modern (submodules) |
 
-Electron is installed locally by `npm run setup` (no global install needed).
+Electron is installed locally as a dev dependency in `showdown-ui/` (no global install needed).
 
 ## Quickstart
 
 ```bash
 git clone <this repo> ps-local && cd ps-local
-git submodule update --init --recursive
-npm run setup       # builds server + client, applies config overlays, installs deps, runs helper tests
-npm start           # launches the Electron app — OFFICIAL mode (live play.pokemonshowdown.com)
-npm run start:local # offline sandbox instead (= PS_SERVER=local)
+npm run setup:ui    # install showdown-ui dependencies
+npm start           # launch the app — connects to live play.pokemonshowdown.com
 ```
 
-> **Note:** `npm run setup` (which builds the PS server/client submodules) is only required for
-> `start:local`. Official mode connects directly to the live site and needs no local build.
-
 Log in with your Pokémon Showdown account and play a battle. When it ends (`|win|`/`|tie|`, or you
-close the room past turn 1), two files appear in `logs/`.
+close the room past turn 1), two files appear in `logs/battle_info/`.
 
 ## How battle logs are saved
 
-For each finished battle, `logs/` gets two files:
+For each finished battle, `logs/battle_info/` gets two files:
 
 ```
-<roomid>_<RESULT>_vs_<opponent>_<timestamp>.txt        # rich, human/LLM-readable
-<roomid>_<RESULT>_vs_<opponent>_<timestamp>.raw.txt    # verbatim PS protocol frames
+<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.txt        # rich, human/LLM-readable
+<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.raw.txt    # verbatim PS protocol frames
 ```
 
-`RESULT` is `WIN | LOSS | TIE | INPROGRESS` (from your perspective — derived from the `|request|` your
-client received). The rich `.txt` has sections: battle summary, your team, opponent team (as revealed),
-field state, turn-by-turn log, raw protocol, and an LLM analysis prompt. See
-[docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
+Result tokens: `WIN_<winner>` · `TIE` · `INPROGRESS` (crash/disconnect). Spectated battles get a
+`SPEC_` prefix. The rich `.txt` has sections: battle summary, teams, field state, turn-by-turn log,
+raw protocol, and an LLM analysis prompt. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
 
 ### Debug logging
 
-Every run also appends structured logs to `logs/debug/` (app run → `app-<ts>.log`, setup/update →
-`<script>-<ts>.log`). Set `PS_LOG_LEVEL=DEBUG` for per-frame / per-request detail (useful when no logs
-appear — see Troubleshooting). `logs/` is gitignored.
+Every run appends structured logs to `logs/debug/showdown-ui-<ts>.log`. Set `PS_LOG_LEVEL=DEBUG` for
+per-frame detail (useful when no logs appear — see Troubleshooting).
 
 ```bash
 PS_LOG_LEVEL=DEBUG npm start
@@ -84,11 +71,11 @@ PS_LOG_LEVEL=DEBUG npm start
 
 ## The helper panel
 
-When a battle is open, a side panel shows the opponent's Pokémon with predicted sets, stats,
-abilities, and tera types. It opens automatically at app start.
+When a battle is open, the right-side panel shows the opponent's Pokémon with predicted sets, stats,
+abilities, and Tera types. It updates live as the battle progresses.
 
-- **Toggle**: **Cmd+Shift+H** (or View → Toggle Helper Panel)
-- The panel auto-downloads a rich `.txt` log at battle end (same content as the `logs/` file)
+- **Resizable**: drag the divider between the game and the panel
+- **Opens automatically** when the app starts
 
 ## Tests & CI
 
@@ -96,20 +83,17 @@ Two tiers, mirrored locally and in GitHub Actions:
 
 | Tier | Command | What it runs | CI |
 |---|---|---|---|
-| **Smoke** | `npm run test:smoke` | One fixture battle → parser → exporter; asserts the rich log's section anchors. Fast, exits non-zero on failure. | `test.yml` — every push/PR |
-| **Deep** | `npm run test:deep` | Full helper suite: parser, exporter, lookup, integration, **golden-file** comparison, and tie/forfeit/in-progress **edge cases**. | `test.yml` (unit) + `deep-test.yml` |
+| **Smoke** | `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors. Fast. | `test.yml` — every push/PR |
+| **Deep** | `npm run test:deep` | Full helper suite: parser, exporter, lookup, integration, golden-file, edge cases. | `test.yml` + `deep-test.yml` |
 
-`deep-test.yml` runs nightly and on-demand (`workflow_dispatch`); on top of the suite it **builds the
-bundled PS server** and launches the **real Electron app in `PS_SYNTHETIC` mode under Xvfb** to prove
-the end-to-end logging path writes a file (the C5 decoupling proof).
-
-If you intentionally change exporter formatting, refresh the golden:
+`deep-test.yml` runs nightly and on-demand; on top of the suite it builds the bundled PS server and
+launches the real Electron app (`app/`) in `PS_SYNTHETIC` mode to prove the end-to-end logging path
+(the C5 decoupling proof). If you intentionally change exporter formatting, refresh the golden:
 `node helper/test/golden.test.js --update`.
 
 **Code quality:** [Codacy](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard) analyzes every
-push (grade badge above); the `codacy` workflow also reports findings into the repo's **Security →
-Code scanning** tab. Analysis scope is set in [.codacy.yaml](.codacy.yaml) — `vendor/` (upstream
-submodules) and generated bundles are excluded.
+push; the `codacy` workflow reports findings into Security → Code scanning. `vendor/` and generated
+bundles are excluded.
 
 ## Updating to latest upstream
 
@@ -121,58 +105,45 @@ ps-local wraps two official Pokémon Showdown repositories as git submodules:
 | Client | `vendor/pokemon-showdown-client` | [smogon/pokemon-showdown-client](https://github.com/smogon/pokemon-showdown-client) |
 
 **Never source-edit anything inside `vendor/`.** All customizations are applied via config overlays
-(`overlay/`) on top of the pristine submodule checkouts.
-
-To bump both submodules to latest, rebuild, and verify:
+(`overlay/`) on top of pristine submodule checkouts.
 
 ```bash
 npm run update-upstream    # bumps both submodules, rebuilds, re-applies overlays, runs helper tests
 ```
 
-If the helper tests fail, an upstream change broke `parser.js`/`exporter.js`; the script prints the
-new submodule SHAs so you can pin to the last-known-good commit. A scheduled CI canary
+If the helper tests fail, an upstream change broke `parser.js`/`exporter.js`. A scheduled CI canary
 (`.github/workflows/upstream-canary.yml`) runs this weekly and files an `upstream-breakage` issue on
 failure. See [docs/UPDATE-WORKFLOW.md](docs/UPDATE-WORKFLOW.md).
 
 ## Rebuilding the battle-data bundle
 
-The extension panel ships a static data bundle (`helper/extension/data/`). After an upstream bump that
-changed sets/moves/Pokédex, regenerate it (slow — Monte-Carlo over the real team generator):
+After an upstream bump that changes sets/moves/Pokédex, regenerate the static data bundle (slow —
+Monte-Carlo over the real team generator):
 
 ```bash
-cd vendor/pokemon-showdown && npm run build && cd ../..   # build-data needs dist/sim/teams.js
+cd vendor/pokemon-showdown && npm run build && cd ../..
 cd helper && node build-data.js
 ```
 
 ## Privacy model
 
-- **official mode** connects to the real Pokémon Showdown servers (you're playing real people), so
-  battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. Only
-  the **logging** is local — the tap writes your battles to `logs/` on disk; nothing extra is uploaded.
-  Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus/Playwire, and ~50 prebid
-  partners) are **cancelled at the Electron session layer** before they leave the machine — the ad
-  partners' servers are never contacted. PS is MIT-licensed, so this is permitted.
-- **local mode** plays against your own machine. **One caveat:** the bundled `testclient-old.html`
-  loads `config.js` from the public site, and any data file the local build didn't emit falls back to
-  fetching from `play.pokemonshowdown.com` (`loadRemoteData`), so first load touches the public site
-  for config/data. Battle traffic itself stays local. Fully-offline client is tracked in Future Work.
+- Battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. Only
+  the **logging** is local — the tap writes your battles to `logs/battle_info/` on disk; nothing extra
+  is uploaded.
+- Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus/Playwire, ~50 prebid partners)
+  are **cancelled at the Electron session layer** before they leave the machine. PS is MIT-licensed, so
+  this is permitted.
 
 Electron's bundled Chromium ships without Google account/sync services.
 
 ## Troubleshooting
 
-- **No log files after a battle.** Open DevTools console (View → Toggle Developer Tools) and confirm
-  the tap is live: `[PSH inject] WebSocket created: … | tapped: true`, then `[PSH inject] battle frame #N`
-  during play. If you see `tapped: false`, the sim socket URL didn't match the tap filter; if you see
-  the WS in Network → WS carrying non-`a[...]` (non-SockJS) frames, the tap's `decodeSockJS` needs to
-  pass them through. Most often, SockJS negotiated `xhr-polling` instead of `websocket` so there was
-  no socket to tap. `PS_LOG_LEVEL=DEBUG` shows per-frame counts in `logs/debug/`.
-- **Panel not visible.** Press Cmd+Shift+H or use View → Toggle Helper Panel. The panel rides on an
-  MV3 service worker; if `loadExtension` fails you'll see a warning in `logs/debug/` — logging is
-  unaffected.
-- **Login issues (local mode only).** If login loops or the ProxyPopup appears, the testclient sid is
-  stale. Refresh it from `https://play.pokemonshowdown.com/testclient-key.php` (while logged in as
-  your account), save to `~/Documents/pokemon-showdown-client/config/testclient-key.js`, and restart.
+- **No log files after a battle.** Open DevTools (Electron menu → View → Toggle Developer Tools) and
+  confirm the tap is live: `[PSH inject] WebSocket created: … | tapped: true`, then
+  `[PSH inject] battle frame #N` during play. If you see `tapped: false`, the sim socket URL didn't
+  match the tap filter. `PS_LOG_LEVEL=DEBUG npm start` shows per-frame counts in `logs/debug/`.
+- **Login issues.** Log in through the normal Pokémon Showdown UI in the left panel. Session persists
+  across restarts via the `persist:showdown-ui` Electron session partition.
 
 ## Contributing
 
@@ -185,91 +156,72 @@ run the tests, and what CI expects from a pull request.
 - **Automatic logging**: every battle is logged with zero per-battle action
 - **Rich format**: human-readable sections (summary, teams, turn log, analysis prompt) plus raw protocol
 - **LLM-ready**: structured format suitable for AI analysis and learning
-- **Spectator support**: logs opponent battles even when you're spectating
+- **Spectator support**: logs opponent battles when you're spectating
 
 ### Helper Panel
 - **Live opponent analysis**: predicted Pokémon sets, stats, abilities, and Tera types
 - **Real-time updates**: panel refreshes as the battle progresses
-- **Keyboard toggle**: Cmd+Shift+H to show/hide (or View menu)
-- **Auto-load**: opens automatically when the app starts
-
-### Modes
-- **Official mode** (default): play on the real `play.pokemonshowdown.com` ladder against live opponents
-- **Local mode**: offline sandbox with bundled server and client for testing and experimentation
+- **Resizable**: drag the divider to allocate screen space
 
 ### Quality & Testing
 - **Smoke tests**: quick validation on every push
 - **Deep tests**: comprehensive suite including golden-file comparison and edge cases
-- **Upstream canary**: weekly check for upstream compatibility, auto-files issues on breaking changes
+- **Upstream canary**: weekly compatibility check, auto-files issues on breaking changes
 - **Code quality**: Codacy analysis on every push with public dashboard
 
 ## Advanced Usage
 
 ### Environment Variables
 ```bash
-PS_LOG_LEVEL=DEBUG          # Enable detailed per-frame logging
-PS_SERVER=local             # Run in local sandbox mode (default: official)
-PS_TESTCLIENT_KEY_PATH=...  # Path to testclient sid file for local-mode login
-PS_SYNTHETIC=1              # Drive test fixtures through the real log path (CI use)
-PS_NO_EXTENSION=1           # Skip loading the helper extension (testing only)
+PS_LOG_LEVEL=DEBUG    # Enable detailed per-frame logging
+PS_TIMEZONE=...       # IANA timezone for "Generated:" timestamps in logs (default UTC)
 ```
 
-### Custom Builds
-
-Build the data bundle after upstream changes:
-```bash
-cd vendor/pokemon-showdown && npm run build && cd ../..
-cd helper && node build-data.js
+Config file (`config.json` at repo root, gitignored — see `config.example.json`):
+```json
+{ "timezone": "America/New_York", "logLevel": "INFO", "saveLogs": true }
 ```
 
 ### Directory Structure
 ```
-app/              → Electron main process + preload + logging
-helper/           → WebSocket tap + parser + exporter + helper extension
+showdown-ui/      → Primary Electron app (React helper panel + live PS client)
+  electron/
+    main/         → Main process: log writer, IPC, ad blocking, window management
+    preload/      → index.ts (helper API bridge) + ps.ts (WebSocket tap)
+  src/            → React renderer (HelperPanel, render.ts, styles)
+helper/           → WebSocket tap + parser + exporter + data bundle + tests
+  extension/lib/  → parser.js (BattleTracker), exporter.js, lookup.js — pure shared libs
+  extension/data/ → Static battle-data bundle (sets, moves, abilities)
 overlay/          → Config overlays applied to vendor submodules
 vendor/           → Pristine git submodules (never source-edit)
   ├─ pokemon-showdown/
   └─ pokemon-showdown-client/
-showdown-ui/      → Standalone native-UI alternative client (separate app)
+app/              → Legacy Electron app (kept for local-mode sandbox and CI synthetic test)
 logs/
   ├─ battle_info/ → Battle logs (.txt + .raw.txt)
-  └─ debug/       → Debug logs for troubleshooting
+  └─ debug/       → Debug logs
 scripts/          → Build and orchestration utilities
 docs/             → Documentation (log format, update workflow, design rationale)
 ```
 
-## Extending ps-local
-
-ps-local is designed with clean separation of concerns:
-
-- **The logging path is decoupled from the panel**: battle logs are written even if the extension fails to load (`PS_NO_EXTENSION=1` proves this; `PS_SYNTHETIC=1` proves the end-to-end path).
-- **Vendor submodules remain pristine**: all customizations live in `overlay/`, `app/`, or `helper/`, making upstream updates safe and reproducible.
-- **Pure libs for cross-platform use**: `helper/extension/lib/parser.js` and `exporter.js` have no browser/Node dependencies, so they power both the extension panel and the Electron main process.
-
-For detailed architecture and contracts, see [PS-LOCAL-EXTRACTION-GUIDE.md](docs/PS-LOCAL-EXTRACTION-GUIDE.md) and [CLAUDE.md](CLAUDE.md).
-
 ## Roadmap
 
-See [BACKLOG.md](BACKLOG.md) for active work and long-term plans:
-
-- **Current**: stats calculation refinement, multi-platform builds (Linux/Windows), unified test tier
-- **Near-term**: persistent Mac Studio monitoring, mobile client support (iOS/Android via WebView)
-- **Future**: Docker containerization, multi-game support, automatic upstream-sync with rollback
+See [BACKLOG.md](BACKLOG.md) for active work and long-term plans.
 
 ## Credits
 
 **ps-local** builds on the excellent open-source work of the **Pokémon Showdown team**:
 
-- **[pokemon-showdown](https://github.com/smogon/pokemon-showdown)** — the competitive Pokémon simulator server powering the entire platform. Countless hours of protocol design, game logic, and community infrastructure.
-- **[pokemon-showdown-client](https://github.com/smogon/pokemon-showdown-client)** — the web client that makes Showdown accessible and enjoyable. Battle UI, login, team building, and real-time communication.
+- **[pokemon-showdown](https://github.com/smogon/pokemon-showdown)** — the competitive Pokémon simulator server powering the entire platform.
+- **[pokemon-showdown-client](https://github.com/smogon/pokemon-showdown-client)** — the web client that makes Showdown accessible and enjoyable.
 
-Both projects are published under the MIT license and are essential to this project's operation. ps-local adds **local logging and analysis** on top of this foundation — the core battle simulation, protocol, and UI remain the Showdown team's excellent work.
+Both projects are published under the MIT license. ps-local adds **local logging and analysis** on top
+of this foundation — the core battle simulation, protocol, and UI remain the Showdown team's work.
 
-**Special thanks** to the Showdown community for maintaining such a robust, open platform for Pokémon competitive play.
+**Special thanks** to the Showdown community for maintaining such a robust, open platform for Pokémon
+competitive play.
 
 ## License
 
 [MIT](LICENSE) © Abhishek Ramesh. The wrapped Pokémon Showdown server and client are included only as
 git submodules under `vendor/` and remain under their own (MIT) licenses.
-
-See [Credits](#credits) above for acknowledgment of the Pokémon Showdown team's foundational work.

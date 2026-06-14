@@ -6,6 +6,7 @@ declare global {
       version: string
       onFrame: (cb: (payload: { data: string }) => void) => void
       offFrame: () => void
+      getBuffer: () => Promise<{ frames: string[]; room: string | null }>
       setGameBounds: (rect: { x: number; y: number; width: number; height: number }) => void
       beginResize: () => void
       endResize:   () => void

@@ -2,13 +2,13 @@ name: deep-test
 
 # Heavyweight suite for major changes — runs on demand and nightly, NOT on every push/PR.
 # (The fast `test` workflow covers per-PR smoke + unit + golden + edge cases.)
+# Runs a full server build on top of the helper suite to prove PS still compiles.
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 7 * * *' # 07:00 UTC nightly
 
 jobs:
-  # Prove the bundled PS server still builds and the full helper suite passes against it.
   build-and-suite:
     runs-on: ubuntu-latest
     steps:
@@ -30,47 +30,8 @@ jobs:
       - name: Run helper unit + golden + edge tests
         run: cd helper && node --test
 
-      - name: Build server (proves it still compiles after an upstream bump)
-        run: cd vendor/pokemon-showdown && npm ci && npm run build
-
-      - name: Protocol smoke (post-build)
+      - name: Protocol smoke
         run: npm run test:smoke
 
-  # End-to-end proof of the C5 logging path: launch the REAL Electron app in PS_SYNTHETIC mode (no
-  # window/server/extension) under a virtual display and assert it writes a battle log to logs/.
-  synthetic-e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
-
-      - name: Install Electron runtime libraries + Xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-            libdrm2 libgbm1 libasound2t64 libgtk-3-0 libxshmfence1 libxcomposite1 \
-            libxdamage1 libxrandr2 libxkbcommon0
-
-      - name: Install app deps (Electron)
-        run: cd app && npm ci
-
-      - name: Synthetic battle -> log file (Xvfb)
-        run: |
-          rm -rf logs
-          # PS_SYNTHETIC=1 feeds the fixture through the real ps-frame path, writes logs/, then quits.
-          cd app && xvfb-run -a env PS_SYNTHETIC=1 npx electron . || true
-          cd ..
-          if find logs -name '*.txt' ! -name '*.raw.txt' | grep -q .; then
-            echo "Synthetic e2e: log written"
-            ls -la logs
-          else
-            echo "Synthetic e2e FAILED: no log written"
-            exit 1
-          fi
+      - name: Build server (proves it still compiles after an upstream bump)
+        run: cd vendor/pokemon-showdown && npm ci && npm run build
