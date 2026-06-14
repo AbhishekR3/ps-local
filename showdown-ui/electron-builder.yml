@@ -1,0 +1,18 @@
+appId: com.abhishekr3.ps-local
+productName: Pokemon Showdown Battle UI
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+# moves.json is read by the main process from process.resourcesPath when packaged
+# (electron/main/index.ts → DATA_DIR). The `to:` tail must match loadMovesData()'s join.
+extraResources:
+  - from: ../helper/extension/data/moves.json
+    to: helper/extension/data/moves.json
+asar: true
+linux:
+  target: [AppImage]
+  category: Game
+  icon: build/icon.png

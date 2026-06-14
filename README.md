@@ -7,8 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An Electron app that **automatically saves a rich battle log for every battle** — a raw protocol dump
-plus a human-readable, LLM-ready analysis — with zero per-battle action. Play on the live
-`play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel.
+plus a human-readable breakdown — with zero per-battle action. Play on the live
+`play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel that
+shows the opponent's predicted sets, stats, abilities, and Tera types live.
 
 ## Architecture
 
@@ -47,18 +48,37 @@ npm start           # launch the app — connects to live play.pokemonshowdown.c
 Log in with your Pokémon Showdown account and play a battle. When it ends (`|win|`/`|tie|`, or you
 close the room past turn 1), two files appear in `logs/battle_info/`.
 
+## Download
+
+Prefer a ready-to-run app over building from source? Package an installer with electron-builder:
+
+```bash
+npm run setup:ui                  # one-time: install showdown-ui deps
+cd showdown-ui && npm run dist    # → dist/Pokemon Showdown Battle UI-<ver>-<arch>.dmg (current OS)
+cd showdown-ui && npm run dist:linux   # → Linux AppImage
+```
+
+> **macOS (unsigned).** The build isn't code-signed, so Gatekeeper blocks the first launch. After
+> dragging the app to Applications, **right-click → Open** once (or run
+> `xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"`). It opens normally
+> afterward. A signed/notarized build needs a paid Apple Developer ID and is out of scope for now.
+
+Installed builds save logs and read `config.json` from `~/Documents/ps-local/` (not the repo). Pre-built
+downloadable installers + per-OS CI badges (Linux/Windows/macOS) and a downloadable Chromium extension
+are in progress — see [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
+
 ## How battle logs are saved
 
 For each finished battle, `logs/battle_info/` gets two files:
 
 ```
-<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.txt        # rich, human/LLM-readable
+<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.txt        # rich, human-readable
 <roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.raw.txt    # verbatim PS protocol frames
 ```
 
 Result tokens: `WIN_<winner>` · `TIE` · `INPROGRESS` (crash/disconnect). Spectated battles get a
-`SPEC_` prefix. The rich `.txt` has sections: battle summary, teams, field state, turn-by-turn log,
-raw protocol, and an LLM analysis prompt. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
+`SPEC_` prefix. The rich `.txt` has sections: battle summary, teams, field state, turn-by-turn log, and
+raw protocol. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
 
 ### Debug logging
 
@@ -79,17 +99,19 @@ abilities, and Tera types. It updates live as the battle progresses.
 
 ## Tests & CI
 
-Two tiers, mirrored locally and in GitHub Actions:
+The helper suite (parser, exporter, lookup, integration, golden-file, edge cases) is the single test
+gate, mirrored locally and in CI:
 
-| Tier | Command | What it runs | CI |
-|---|---|---|---|
-| **Smoke** | `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors. Fast. | `test.yml` — every push/PR |
-| **Deep** | `npm run test:deep` | Full helper suite: parser, exporter, lookup, integration, golden-file, edge cases. | `test.yml` + `deep-test.yml` |
+| Command | What it runs | CI |
+|---|---|---|
+| `npm test` | Full helper suite (`cd helper && node --test`). | `test.yml` — every push/PR |
+| `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors. Fast. | `test.yml` — every push/PR |
+| `cd helper && node --test test/parser.test.js` | A single test file. | — |
 
-`deep-test.yml` runs nightly and on-demand; on top of the suite it builds the bundled PS server and
-launches the real Electron app (`app/`) in `PS_SYNTHETIC` mode to prove the end-to-end logging path
-(the C5 decoupling proof). If you intentionally change exporter formatting, refresh the golden:
-`node helper/test/golden.test.js --update`.
+The nightly `deep-test.yml` workflow runs the same helper suite, then additionally builds the bundled PS
+server and launches the legacy Electron app (`app/`) in `PS_SYNTHETIC` mode to prove the end-to-end
+logging path (the C5 decoupling proof). If you intentionally change exporter formatting, refresh the
+golden: `node helper/test/golden.test.js --update`.
 
 **Code quality:** [Codacy](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard) analyzes every
 push; the `codacy` workflow reports findings into Security → Code scanning. `vendor/` and generated
@@ -154,8 +176,7 @@ run the tests, and what CI expects from a pull request.
 
 ### Battle Logging
 - **Automatic logging**: every battle is logged with zero per-battle action
-- **Rich format**: human-readable sections (summary, teams, turn log, analysis prompt) plus raw protocol
-- **LLM-ready**: structured format suitable for AI analysis and learning
+- **Rich format**: human-readable sections (summary, teams, field state, turn log) plus raw protocol
 - **Spectator support**: logs opponent battles when you're spectating
 
 ### Helper Panel

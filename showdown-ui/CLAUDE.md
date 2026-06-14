@@ -11,9 +11,11 @@ A standalone Electron + React + TypeScript app (`electron-vite`) that is the **i
 ## Commands
 
 ```bash
-npm run dev      # electron-vite dev (hot-reload for renderer; restarts main/preload on change)
-npm run build    # production build → out/
-npm run preview  # preview the production build
+npm run dev         # electron-vite dev (hot-reload for renderer; restarts main/preload on change)
+npm run build       # production build → out/
+npm run preview     # preview the production build
+npm run dist        # package an installer for the current OS (dmg on macOS) → dist/
+npm run dist:linux  # package the Linux AppImage → dist/
 ```
 
 Run from this directory (`showdown-ui/`). No test suite yet.
@@ -88,11 +90,22 @@ Do **not** "fix" these back toward `panel.js`. Pure data-layer changes still bel
 
 **Tradeoff vs `../app/main.js`**: `../app/` had `PS_SYNTHETIC=1` (headless fixture feed for CI). showdown-ui has no equivalent — add it if CI coverage of the log path is required.
 
-### Config (`config.json` at repo root)
-Loaded at startup before the logger initializes. Keys: `timezone` (IANA, default `UTC`), `logLevel` (`DEBUG`/`INFO`/`WARN`/`ERROR`, default `INFO`), `saveLogs` (bool, default `true`). Env vars `PS_LOG_LEVEL` and `PS_TIMEZONE` override the file. Missing `config.json` is normal (defaults apply silently); malformed JSON logs a warning.
+### Config (`config.json`)
+Loaded at startup before the logger initializes from `USER_ROOT` (repo root in dev, `~/Documents/ps-local/` when packaged — see Packaging). Keys: `timezone` (IANA, default `UTC`), `logLevel` (`DEBUG`/`INFO`/`WARN`/`ERROR`, default `INFO`), `saveLogs` (bool, default `true`). Env vars `PS_LOG_LEVEL` and `PS_TIMEZONE` override the file. Missing `config.json` is normal (defaults apply silently); malformed JSON logs a warning.
 
 ### Logging
 `electron/main/index.ts` has an inline logger (no separate file) that mirrors `../app/logger.js` format: `ISO [LEVEL] [ns] msg`. Threshold from `PS_LOG_LEVEL`. Writes to `../logs/debug/showdown-ui-<ts>.log` (separate file from `app-<ts>.log`). Two namespaces: `ui-main` (startup/frames/rooms) and `ui-wlog` (log-writer events).
+
+### Packaging / distribution (`electron-builder.yml`)
+`npm run dist` (`electron-vite build && electron-builder`) produces a downloadable installer — `productName: Pokemon Showdown Battle UI`, dmg on macOS / AppImage on Linux (`dist:linux`). Output → `dist/` (gitignored via the root `dist/` rule). The icon is `build/icon.png` (committed; generated from `../charizard_logo.jpeg`).
+
+**Packaged vs. dev paths.** A packaged app's `__dirname` is inside the asar, so `index.ts` branches on `app.isPackaged`:
+- `DATA_DIR` = `process.resourcesPath` (packaged) / repo root (dev) — base for `moves.json`, which is shipped via `extraResources` to `helper/extension/data/moves.json` (the `to:` tail must stay in sync with `loadMovesData()`).
+- `USER_ROOT` = `~/Documents/ps-local/` (packaged) / repo root (dev) — base for writable state: `config.json` and `logs/`.
+
+In dev both collapse to the repo root, so the dev path is byte-for-byte unchanged. The parser/exporter libs are **statically imported** (so Rollup bundles them into `out/main/index.js`) rather than dynamically `import()`ed — required to survive packaging.
+
+macOS builds are **unsigned** (no Apple Developer ID): first launch needs right-click → Open, or `xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"`. Remaining phases (PS_SMOKE smoke mode, CI workflows, Windows/macOS badges) tracked in [../docs/PACKAGING-PROGRESS.md](../docs/PACKAGING-PROGRESS.md).
 
 ### Known gaps (by design, not bugs)
 - Only the most-recently-active battle is tracked by the renderer — `BattleTracker.feed()` auto-resets on a new roomid; no foreground-room routing. The log writer in main maintains a full `rooms` map so multiple concurrent rooms are logged correctly.
