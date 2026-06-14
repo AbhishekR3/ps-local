@@ -64,7 +64,7 @@ if (MODE === 'official') {
   // natively. The tap postMessages frames, which the relay below ships to main.
   try {
     if (tapSrc) {
-      new Function(tapSrc)(); // eslint-disable-line no-new-func -- run the unforked tap in-world
+      new Function(tapSrc)(); // run the unforked tap in-world (CSP-immune, patches window.WebSocket before SockJS)
       plog('INFO', 'tap patched directly into page world (official)');
     }
   } catch (e) {

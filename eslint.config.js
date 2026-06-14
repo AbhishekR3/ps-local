@@ -60,8 +60,16 @@ module.exports = [
   },
   {
     // Electron main process, orchestration scripts, and this config: CommonJS on Node.
+    // Exception: build-ability-descriptions.js uses top-level await and ESM imports, so it gets
+    // its own block below with sourceType:module before this catch-all.
     files: ['app/**/*.js', 'scripts/**/*.js', '*.config.js'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: nodeGlobals },
+    rules: baseRules,
+  },
+  {
+    // build-ability-descriptions.js uses ESM (import + top-level await) — override the scripts block.
+    files: ['scripts/build-ability-descriptions.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: nodeGlobals },
     rules: baseRules,
   },
   {

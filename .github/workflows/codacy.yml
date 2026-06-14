@@ -20,10 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # NOTE: pinned to @master per Codacy's documented recipe. For reproducibility you can pin this
-      # to a release commit SHA (Codacy → repo Settings, or the action's releases page).
       - name: Run Codacy Analysis CLI
-        uses: codacy/codacy-analysis-cli-action@master
+        uses: codacy/codacy-analysis-cli-action@d43360362776a6789b47b99ae8973510854e2d3d  # master
         with:
           # Respects .codacy.yaml (excludes vendor/ etc.). Emit GitHub-compatible SARIF and never
           # fail the job on issue count — this stage is advisory.
