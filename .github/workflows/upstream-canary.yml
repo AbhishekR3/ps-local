@@ -20,7 +20,12 @@ jobs:
       - name: Bump submodules to upstream latest
         id: bump
         run: |
-          git submodule update --remote --merge
+          # Checkout mode (NOT --merge): the runner checks out submodules shallow, so the pinned
+          # gitlink commit and the upstream branch tip share no common ancestor — `--merge` then dies
+          # with "refusing to merge unrelated histories". A plain `--remote` fetches the tracked branch
+          # and checks out its tip (detached), which is exactly the "bump to upstream latest" we want.
+          git submodule sync --recursive
+          git submodule update --remote --force --recursive
           SERVER_SHA=$(git -C vendor/pokemon-showdown rev-parse --short HEAD)
           CLIENT_SHA=$(git -C vendor/pokemon-showdown-client rev-parse --short HEAD)
           echo "server_sha=$SERVER_SHA" >> "$GITHUB_OUTPUT"

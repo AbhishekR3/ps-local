@@ -18,6 +18,7 @@ on:
       - 'helper/extension/lib/**'
       - 'helper/extension/data/moves.json'
       - '.github/workflows/build-windows.yml'
+  workflow_dispatch: # allow on-demand runs (gives the badge a run on demand)
 
 jobs:
   build-windows:
