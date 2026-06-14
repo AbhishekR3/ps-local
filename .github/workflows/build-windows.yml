@@ -1,0 +1,63 @@
+name: build-windows
+
+# Builds the showdown-ui Electron app as a Windows NSIS installer, asserts the .exe exists, and runs a
+# PS_SMOKE launch smoke on the unpacked app so a broken WebSocket tap (injected.js not shipped) fails
+# CI rather than shipping. On Windows the GUI app detaches from the console, so we gate on the process
+# exit code (PS_SMOKE exits 1 when injected.js is missing) instead of grepping stdout.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-windows.yml'
+  pull_request:
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-windows.yml'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+
+      - name: Build NSIS installer
+        run: cd showdown-ui && npm run dist:win
+
+      - name: Assert installer artifact exists
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem showdown-ui/dist/*.exe -ErrorAction SilentlyContinue
+          if (-not $files) { Write-Error 'No .exe produced'; exit 1 }
+          $files | ForEach-Object { Write-Host $_.FullName $_.Length }
+          if (($files | Where-Object { $_.Length -gt 0 }).Count -eq 0) { Write-Error 'installer is empty'; exit 1 }
+
+      - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
+        shell: pwsh
+        run: |
+          $bin = "showdown-ui/dist/win-unpacked/Pokemon Showdown Battle UI.exe"
+          if (-not (Test-Path $bin)) { Write-Error 'No unpacked .exe found'; exit 1 }
+          $env:PS_SMOKE = '1'
+          $p = Start-Process -FilePath $bin -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Write-Error "PS_SMOKE exited $($p.ExitCode) — injected.js missing, battle-help would be broken"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps-local-windows-installer
+          path: showdown-ui/dist/*.exe
+          if-no-files-found: error

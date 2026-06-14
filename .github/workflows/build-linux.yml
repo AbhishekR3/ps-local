@@ -1,0 +1,64 @@
+name: build-linux
+
+# Builds the showdown-ui Electron app as a Linux AppImage, asserts the artifact exists, and runs a
+# headless launch smoke (xvfb + PS_SMOKE) so a green badge means the packaged app *launches*, not just
+# compiles. Packaging consumes only helper/ + showdown-ui/ (both in the main repo) — no submodules.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-linux.yml'
+  pull_request:
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-linux.yml'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false # packaging needs only helper/ + showdown-ui/, both in the main repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+
+      - name: Build AppImage
+        run: cd showdown-ui && npm run dist:linux
+
+      - name: Assert AppImage artifact exists
+        run: |
+          shopt -s nullglob
+          files=(showdown-ui/dist/*.AppImage)
+          if [ ${#files[@]} -eq 0 ]; then echo 'No .AppImage produced'; exit 1; fi
+          ls -la "${files[@]}"
+          [ -s "${files[0]}" ] || { echo 'AppImage is empty'; exit 1; }
+
+      - name: Headless launch smoke (xvfb + PS_SMOKE)
+        # productName has spaces → the unpacked binary is "Pokemon Showdown Battle UI", not "ps-local".
+        # If electron-builder slugifies the linux-unpacked dir on a future bump, update the path here.
+        # --no-sandbox: GitHub runners can't use the Chromium sandbox (no user namespaces).
+        # PS_SMOKE exits 1 if injected.js (the WebSocket tap) isn't shipped — the regression that broke
+        # battle-help in the packaged app. We also grep the "tap source ok" line to make it explicit.
+        run: |
+          xvfb-run -a env PS_SMOKE=1 \
+            "showdown-ui/dist/linux-unpacked/Pokemon Showdown Battle UI" --no-sandbox 2>&1 | tee smoke.log
+          grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps-local-linux-AppImage
+          path: showdown-ui/dist/*.AppImage
+          if-no-files-found: error

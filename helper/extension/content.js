@@ -21,6 +21,9 @@ const MAX_WIDTH = 680;
 // --- panel iframe injection ---------------------------------------------------
 let panelFrame = null;
 let panelVisible = false;
+// Last tap-health signal injected.js posted (no battle frames are flowing). Cached so a panel
+// opened after the one-shot 15s/framing warning still learns the tap is dead.
+let lastTapStatus = null;
 
 // The battle the user is currently viewing. The PS client routes rooms via the URL — the
 // modern client uses the pathname (e.g. "/battle-gen9randombattle-123"), older builds use the
@@ -120,6 +123,8 @@ function setVisible(v) {
 	if (v) {
 		console.log('[PSH content] setVisible true, posting panel-shown room=' + foregroundRoom());
 		panelFrame?.contentWindow?.postMessage({ type: 'panel-shown', room: foregroundRoom() }, PANEL_ORIGIN);
+		// Replay a cached dead-tap signal: the one-shot warning may have fired before the panel opened.
+		if (lastTapStatus) panelFrame?.contentWindow?.postMessage({ type: 'tap-status', ...lastTapStatus }, PANEL_ORIGIN);
 	}
 }
 
@@ -278,7 +283,17 @@ function frameHandler(event) {
 	// fails and silently drops every frame from injected.js. The __psHelper flag below
 	// is sufficient to identify messages that came from our script.
 	const msg = event.data;
-	if (!msg || msg.__psHelper !== true || typeof msg.data !== 'string') return;
+	if (!msg || msg.__psHelper !== true) return;
+
+	// Tap-health signal from injected.js (carries `tap`, no `data`). The tap is alive but sees no
+	// battle frames — forward to the panel for its "battle data unavailable" banner and cache it.
+	if (typeof msg.tap === 'string') {
+		lastTapStatus = { tap: msg.tap, reason: msg.reason };
+		panelFrame?.contentWindow?.postMessage({ type: 'tap-status', tap: msg.tap, reason: msg.reason }, PANEL_ORIGIN);
+		return;
+	}
+
+	if (typeof msg.data !== 'string') return;
 
 	const room = roomOf(msg.data);
 

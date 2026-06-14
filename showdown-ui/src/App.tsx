@@ -1,25 +1,16 @@
-import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import './styles/global.css'
 import Battle from './routes/Battle'
 
 const REPO_URL = 'https://github.com/AbhishekR3/ps-local'
 
-const headerBtn: CSSProperties = {
-  background: 'none',
-  border: '1px solid var(--border)',
-  borderRadius: 4,
-  cursor: 'pointer',
-  color: 'var(--muted)',
-  fontSize: 11,
-  padding: '3px 8px',
-  lineHeight: 1.4,
-}
-
 export default function App() {
   // Owns the helper-open state so the toggle can live in this header (always above the psView, which
   // would occlude a button placed over the game region). Battle reads it to collapse the panel.
   const [helperOpen, setHelperOpen] = useState(true)
+  // Bumped on each Re-sync click; HelperPanel rebuilds its tracker from the frame buffer when it
+  // changes. Lives here so the button stays in the always-visible header (works even when collapsed).
+  const [resyncSignal, setResyncSignal] = useState(0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -39,14 +30,21 @@ export default function App() {
           Pokemon Showdown Battle UI
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button style={headerBtn} title="Open the battle-log folder" onClick={() => window.psUI.openLogs()}>
+          <button
+            className="header-btn"
+            title="Rebuild the battle helper from the current battle (use if it's stuck or out of sync)"
+            onClick={() => setResyncSignal((n) => n + 1)}
+          >
+            Re-sync ↻
+          </button>
+          <button className="header-btn" title="Open the battle-log folder" onClick={() => window.psUI.openLogs()}>
             Open Logs ↗
           </button>
-          <button style={headerBtn} title="View this project on GitHub" onClick={() => window.psUI.openExternal(REPO_URL)}>
+          <button className="header-btn" title="View this project on GitHub" onClick={() => window.psUI.openExternal(REPO_URL)}>
             GitHub ↗
           </button>
           <button
-            style={headerBtn}
+            className="header-btn"
             title={helperOpen ? 'Hide the battle helper' : 'Show the battle helper'}
             onClick={() => setHelperOpen((o) => !o)}
           >
@@ -56,7 +54,7 @@ export default function App() {
       </header>
 
       {/* ── Main area (game + helper) ────────────────────────────── */}
-      <Battle helperOpen={helperOpen} />
+      <Battle helperOpen={helperOpen} resyncSignal={resyncSignal} />
 
     </div>
   )

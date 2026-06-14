@@ -41,4 +41,14 @@ contextBridge.exposeInMainWorld('psUI', {
   // Header actions: open the project repo in the system browser, or the battle-log folder in Finder.
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
   openLogs:     () => ipcRenderer.send('open-logs'),
+
+  // Transport health for the status line. getStatus() pulls the current snapshot on mount; onStatus()
+  // subscribes to pushes and returns an unsubscribe (mirrors onResizeDrag). reloadPS() retries the load.
+  getStatus: (): Promise<{ tap: string; page: string; saveLogs: boolean; logWrite: string }> => ipcRenderer.invoke('get-status'),
+  onStatus: (cb: (s: { tap: string; page: string; saveLogs: boolean; logWrite: string }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, s: { tap: string; page: string; saveLogs: boolean; logWrite: string }) => cb(s)
+    ipcRenderer.on('ps-status', handler)
+    return () => ipcRenderer.removeListener('ps-status', handler)
+  },
+  reloadPS: () => ipcRenderer.send('reload-ps'),
 })

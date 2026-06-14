@@ -15,6 +15,10 @@
     "test:smoke": "node helper/test/smoke.mjs",
     "test:deep": "cd helper && node --test",
     "setup:ui": "cd showdown-ui && npm install",
-    "build:ui": "cd showdown-ui && npm run build"
+    "build:ui": "cd showdown-ui && npm run build",
+    "dist:ui": "cd showdown-ui && npm run dist",
+    "dist:ui:linux": "cd showdown-ui && npm run dist:linux",
+    "dist:ui:win": "cd showdown-ui && npm run dist:win",
+    "dist:ui:mac": "cd showdown-ui && npm run dist:mac"
   }
 }

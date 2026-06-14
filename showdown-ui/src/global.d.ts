@@ -1,5 +1,12 @@
 export {}
 
+export interface PsStatus {
+  tap: 'unknown' | 'ok' | 'error'
+  page: 'ok' | 'unreachable'
+  saveLogs: boolean
+  logWrite: 'ok' | 'error'
+}
+
 declare global {
   interface Window {
     psUI: {
@@ -14,6 +21,9 @@ declare global {
       onResizeDragEnd: (cb: () => void) => () => void
       openExternal: (url: string) => void
       openLogs:     () => void
+      getStatus: () => Promise<PsStatus>
+      onStatus:  (cb: (s: PsStatus) => void) => () => void
+      reloadPS:  () => void
     }
   }
 }

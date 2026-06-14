@@ -8,11 +8,22 @@ files:
   - package.json
 # moves.json is read by the main process from process.resourcesPath when packaged
 # (electron/main/index.ts → DATA_DIR). The `to:` tail must match loadMovesData()'s join.
+# injected.js is the WebSocket tap; the ps preload reads it from process.resourcesPath when packaged
+# (electron/preload/ps.ts). The `to:` tail must match that candidate path.
 extraResources:
   - from: ../helper/extension/data/moves.json
     to: helper/extension/data/moves.json
+  - from: ../helper/extension/injected.js
+    to: helper/extension/injected.js
 asar: true
 linux:
   target: [AppImage]
   category: Game
+  icon: build/icon.png
+win:
+  target: [nsis]
+  icon: build/icon.png
+mac:
+  target: [dmg]
+  category: public.app-category.games
   icon: build/icon.png

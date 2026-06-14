@@ -2,6 +2,10 @@
 
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
 [![deep-test](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml)
+[![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml)
+[![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml)
+[![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml)
+[![build-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml)
 [![upstream-canary](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/upstream-canary.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/fe47edfc301e4964990f676c9a1c8125)](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -46,7 +50,12 @@ npm start           # launch the app — connects to live play.pokemonshowdown.c
 ```
 
 Log in with your Pokémon Showdown account and play a battle. When it ends (`|win|`/`|tie|`, or you
-close the room past turn 1), two files appear in `logs/battle_info/`.
+close the room past turn 1, two files appear in `logs/`
+
+`battle_info` - Information on the Pokemon battle
+
+`debug` - Information to debug the session
+
 
 ## Download
 
@@ -63,27 +72,43 @@ cd showdown-ui && npm run dist:linux   # → Linux AppImage
 > `xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"`). It opens normally
 > afterward. A signed/notarized build needs a paid Apple Developer ID and is out of scope for now.
 
-Installed builds save logs and read `config.json` from `~/Documents/ps-local/` (not the repo). Pre-built
-downloadable installers + per-OS CI badges (Linux/Windows/macOS) and a downloadable Chromium extension
-are in progress — see [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
+Don't want to build it yourself? Every push to `main` builds installers for all three OSes in CI — grab
+the one you need from the latest run's artifacts:
+
+| OS | Workflow | Artifact | Notes |
+|---|---|---|---|
+| Linux | [build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml) | `ps-local-linux-AppImage` | `chmod +x` then run the AppImage |
+| Windows | [build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml) | `ps-local-windows-installer` | run the NSIS `.exe` |
+| macOS | [build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml) | `ps-local-macos-dmg` | unsigned — right-click → Open (see note above) |
+
+(GitHub Releases that attach all three installers to a tag are a planned follow-up.)
+
+**Chromium extension (legacy `app/` only).** The helper also ships as a Chrome MV3 extension, built into
+a zip by the
+[build-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml) workflow.
+Download the `ps-local-extension` artifact from the latest run, unzip it, then load it via
+`chrome://extensions` → enable **Developer mode** → **Load unpacked** → pick the `extension/` folder.
+This is the panel used with the `app/` fallback; the primary `showdown-ui/` app has the helper built in
+and needs no extension.
+
+Installed builds save logs and read `config.json` from `~/Documents/ps-local/` (not the repo). Packaging
+status (per-OS CI + the extension zip + planned Releases) is tracked in
+[docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
 
 ## How battle logs are saved
 
-For each finished battle, `logs/battle_info/` gets two files:
+For each finished battle, `logs/battle_info/` gets one file:
 
 ```
 <roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.txt        # rich, human-readable
-<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.raw.txt    # verbatim PS protocol frames
 ```
 
 Result tokens: `WIN_<winner>` · `TIE` · `INPROGRESS` (crash/disconnect). Spectated battles get a
-`SPEC_` prefix. The rich `.txt` has sections: battle summary, teams, field state, turn-by-turn log, and
-raw protocol. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
+`SPEC_` prefix. The rich `.txt` has sections: battle summary, teams, field state, turn-by-turn log, and raw protocol. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
 
 ### Debug logging
 
-Every run appends structured logs to `logs/debug/showdown-ui-<ts>.log`. Set `PS_LOG_LEVEL=DEBUG` for
-per-frame detail (useful when no logs appear — see Troubleshooting).
+Every run appends structured logs to `logs/debug/showdown-ui-<ts>.log`. Set `PS_LOG_LEVEL=DEBUG` for per-frame detail (useful when no logs appear — see Troubleshooting).
 
 ```bash
 PS_LOG_LEVEL=DEBUG npm start
@@ -91,8 +116,7 @@ PS_LOG_LEVEL=DEBUG npm start
 
 ## The helper panel
 
-When a battle is open, the right-side panel shows the opponent's Pokémon with predicted sets, stats,
-abilities, and Tera types. It updates live as the battle progresses.
+When a battle is open, the right-side panel shows the opponent's Pokémon with predicted sets, stats, abilities, and Tera types. It updates live as the battle progresses.
 
 - **Resizable**: drag the divider between the game and the panel
 - **Opens automatically** when the app starts
@@ -112,6 +136,15 @@ The nightly `deep-test.yml` workflow runs the same helper suite, then additional
 server and launches the legacy Electron app (`app/`) in `PS_SYNTHETIC` mode to prove the end-to-end
 logging path (the C5 decoupling proof). If you intentionally change exporter formatting, refresh the
 golden: `node helper/test/golden.test.js --update`.
+
+**Build CI** — the three build workflows run on `showdown-ui/` or `helper/extension/` path changes:
+
+| Command | What it mirrors | CI workflow |
+|---|---|---|
+| `npm run dist:ui:linux` | AppImage build + xvfb `PS_SMOKE` launch smoke | `build-linux.yml` |
+| `npm run dist:ui:win` | Windows NSIS installer | `build-windows.yml` |
+| `npm run dist:ui:mac` | macOS dmg (unsigned) | `build-macos.yml` |
+| *(no local equivalent)* | Extension zip + credential leak-assert | `build-extension.yml` |
 
 **Code quality:** [Codacy](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard) analyzes every
 push; the `codacy` workflow reports findings into Security → Code scanning. `vendor/` and generated
@@ -150,11 +183,9 @@ cd helper && node build-data.js
 ## Privacy model
 
 - Battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. Only
-  the **logging** is local — the tap writes your battles to `logs/battle_info/` on disk; nothing extra
-  is uploaded.
+  the **logging** is local — the tap writes your battles to `logs/battle_info/` on disk; nothing extra is uploaded.
 - Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus/Playwire, ~50 prebid partners)
-  are **cancelled at the Electron session layer** before they leave the machine. PS is MIT-licensed, so
-  this is permitted.
+  are **cancelled at the Electron session layer** before they leave the machine. PS is MIT-licensed, so this is permitted.
 
 Electron's bundled Chromium ships without Google account/sync services.
 
@@ -219,15 +250,12 @@ vendor/           → Pristine git submodules (never source-edit)
   └─ pokemon-showdown-client/
 app/              → Legacy Electron app (kept for local-mode sandbox and CI synthetic test)
 logs/
-  ├─ battle_info/ → Battle logs (.txt + .raw.txt)
+  ├─ battle_info/ → Battle logs (.txt)
   └─ debug/       → Debug logs
 scripts/          → Build and orchestration utilities
 docs/             → Documentation (log format, update workflow, design rationale)
 ```
 
-## Roadmap
-
-See [BACKLOG.md](BACKLOG.md) for active work and long-term plans.
 
 ## Credits
 

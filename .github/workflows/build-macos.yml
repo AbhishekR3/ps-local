@@ -1,0 +1,64 @@
+name: build-macos
+
+# Builds the showdown-ui Electron app as an unsigned macOS dmg, asserts the artifact exists, and runs a
+# PS_SMOKE launch smoke on the unpacked .app — macOS is the platform where battle-help silently broke
+# (injected.js not shipped), so this job must exercise the tap-source path, not just the build.
+# Build is unsigned (no Apple Developer ID): users right-click → Open on first launch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-macos.yml'
+  pull_request:
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-macos.yml'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+
+      - name: Build dmg (unsigned)
+        run: cd showdown-ui && npm run dist:mac
+
+      - name: Assert dmg artifact exists
+        run: |
+          shopt -s nullglob
+          files=(showdown-ui/dist/*.dmg)
+          if [ ${#files[@]} -eq 0 ]; then echo 'No .dmg produced'; exit 1; fi
+          ls -la "${files[@]}"
+          [ -s "${files[0]}" ] || { echo 'dmg is empty'; exit 1; }
+
+      - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
+        # The unpacked .app dir is arch-suffixed (mac-arm64 on Apple-Silicon runners), so glob for it.
+        # PS_SMOKE exits 1 if injected.js isn't bundled — the regression that broke battle-help here.
+        run: |
+          app=$(ls -d showdown-ui/dist/mac*/*.app | head -1)
+          if [ -z "$app" ]; then echo 'No unpacked .app found'; exit 1; fi
+          bin="$app/Contents/MacOS/Pokemon Showdown Battle UI"
+          PS_SMOKE=1 "$bin" 2>&1 | tee smoke.log
+          grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps-local-macos-dmg
+          path: showdown-ui/dist/*.dmg
+          if-no-files-found: error

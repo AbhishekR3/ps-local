@@ -1,11 +1,13 @@
 # Battle log format
 
-Each finished battle writes two files to `logs/`:
+Each finished battle writes one file to `logs/`:
 
 | File | Contents |
 |---|---|
 | `<roomid>_<RESULT>_vs_<opponent>_<timestamp>.txt` | rich, human/LLM-readable analysis |
-| `<roomid>_<RESULT>_vs_<opponent>_<timestamp>.raw.txt` | the verbatim PS protocol frames |
+
+The verbatim PS protocol frames are embedded in the rich `.txt` itself (the **RAW PROTOCOL** section
+below), so the file is self-contained — no separate `.raw.txt` is written.
 
 ## Filename fields
 
@@ -32,14 +34,14 @@ Produced by `generateBattleLog(state, rawFrames, movesData)` in
 5. **TURN-BY-TURN BATTLE LOG** — each turn's moves with damage deltas and effects. Move names are
    annotated (e.g. `Earthquake (Ground · Physical · 100 BP)`) when the move data bundle is loaded;
    otherwise bare move ids are shown.
-6. **RAW PROTOCOL (complete reference — all WebSocket frames)** — the same frames as the `.raw.txt`,
+6. **RAW PROTOCOL (complete reference — all WebSocket frames)** — the decoded SockJS frames,
    embedded for a self-contained file.
 7. **LLM ANALYSIS PROMPT** — a ready-to-paste prompt for asking an LLM to analyze the game.
 
 Move annotations come from `helper/extension/data/moves.json`, loaded once by the Electron main
 process. If that file is missing the rich log still renders, just with bare move ids.
 
-## Raw `.raw.txt`
+## Raw protocol section
 
 The decoded SockJS battle frames, joined by newlines, exactly as received from the server — the
-ground-truth record if the rich exporter ever has a bug.
+ground-truth record if the rich exporter ever has a bug. Embedded as section 6 of the rich `.txt`.

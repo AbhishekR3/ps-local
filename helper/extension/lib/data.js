@@ -5,6 +5,7 @@ const base = (p) => api.runtime.getURL(`data/${p}`);
 
 let _pokedex = null;
 let _moves = null;
+let _abilitiesDesc = null;
 const _setsCache = new Map();
 const _itemsCache = new Map();
 const _abilitiesCache = new Map();
@@ -25,8 +26,16 @@ async function fetchJson(url) {
 }
 
 export async function loadCore() {
-	if (!_pokedex) [_pokedex, _moves] = await Promise.all([fetchJson(base('pokedex.json')), fetchJson(base('moves.json'))]);
-	return { pokedex: _pokedex, moves: _moves };
+	if (!_pokedex) {
+		// abilities-desc powers the ability descriptions in the panel; tolerate it missing (older
+		// bundles) by falling back to {} so the rest of core still loads.
+		[_pokedex, _moves, _abilitiesDesc] = await Promise.all([
+			fetchJson(base('pokedex.json')),
+			fetchJson(base('moves.json')),
+			fetchJson(base('abilities-desc.json')).catch(() => ({})),
+		]);
+	}
+	return { pokedex: _pokedex, moves: _moves, abilitiesDesc: _abilitiesDesc };
 }
 
 // Returns the sets object for a resolved key (e.g. "gen9doubles"), or null if unavailable.

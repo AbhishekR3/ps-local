@@ -14,11 +14,11 @@ Chromium extension, each with its own README CI badge. Owner has macOS only → 
 |---|---|---|
 | 1 | Main-process packaging readiness (static imports + `isPackaged` paths) | ✅ **Done, validated** |
 | 2 | electron-builder config + icon + `dist` scripts (local dmg) | ✅ **Done, validated** |
-| 3 | `PS_SMOKE` headless self-exit (enables Linux launch smoke) | ⬜ Not started |
-| 4 | Linux CI workflow + README badge + Download section | ⬜ Not started |
-| 5 | Chromium extension zip workflow + badge | ⬜ Not started |
-| 6 | Windows + macOS builds + CI + badges | ⬜ Not started |
-| 7 | Docs (CLAUDE.md updates) + optional Releases | ⬜ Not started |
+| 3 | `PS_SMOKE` headless self-exit (enables Linux launch smoke) | ✅ **Done, validated locally** |
+| 4 | Linux CI workflow + README badge + Download section | ✅ **Done — green run pending push** |
+| 5 | Chromium extension zip workflow + badge | ✅ **Done, validated locally** |
+| 6 | Windows + macOS builds + CI + badges | ✅ **Done — green runs pending push** |
+| 7 | Docs (CLAUDE.md updates) | ✅ **Done** |
 
 Plus one **UI side-task** done alongside (not part of the packaging plan): opponent stat bars + window
 sizing — see "Side changes" below.
@@ -82,10 +82,10 @@ sizing — see "Side changes" below.
 ## ⚠️ Carry-forward gotchas for the remaining phases
 
 1. **`productName` has spaces** → the Linux unpacked binary + AppImage are named
-   `Pokemon Showdown Battle UI`, **not** `ps-local`. The plan's Phase 4 xvfb smoke command assumed
-   `./showdown-ui/dist/linux-unpacked/ps-local`. **Update it** to the spaced name (quote it), e.g.
-   `xvfb-run -a env PS_SMOKE=1 timeout 60s "./showdown-ui/dist/linux-unpacked/Pokemon Showdown Battle UI"`.
-   Verify the exact path after the first Linux CI run (electron-builder may also slugify it).
+   `Pokemon Showdown Battle UI`, **not** `ps-local`. `build-linux.yml`'s xvfb smoke already uses the
+   quoted spaced name (`xvfb-run -a env PS_SMOKE=1 "showdown-ui/dist/linux-unpacked/Pokemon Showdown
+   Battle UI" --no-sandbox`). **Still verify the exact path after the first Linux CI run** —
+   electron-builder may slugify the `linux-unpacked` dir; if so, fix the path in the workflow.
 2. **macOS Gatekeeper string** in README/docs must use the spaced bundle name:
    `xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"`.
 3. **`extraResources` ↔ `loadMovesData()` tail** must stay identical
@@ -112,11 +112,38 @@ sizing — see "Side changes" below.
 | `showdown-ui/src/lib/render.ts` | `statRangeBar` solid-fill + range-extension |
 | `showdown-ui/src/styles/global.css` | `.stat-bar` flex + `.stat-bar u` extension style |
 
+## Phases 3-6 — done (Phase 3 + 5 validated locally; 4 + 6 build/smoke pending the owner's push)
+
+- **Phase 3 (`PS_SMOKE`):** added `if (process.env['PS_SMOKE']) { log.info('PS_SMOKE: boot ok, exiting');
+  app.exit(0) }` in `index.ts` `whenReady`, after `createWindow()` and before the sweep `setInterval`.
+  Locally verified: `PS_SMOKE=1` boots and exits 0 (log line present, bundled into `out/main/index.js`);
+  plain boot keeps running (no early exit).
+- **Phase 4 (Linux CI):** `.github/workflows/build-linux.yml` — `submodules: false`, node 22, `npm ci`,
+  `npm run dist:linux`, AppImage-exists assert, **xvfb + `PS_SMOKE` launch smoke** (quoted spaced binary
+  per gotcha #1, `--no-sandbox` for CI runners), upload `ps-local-linux-AppImage`. README `build-linux`
+  badge + Download table row. **Green run is push-only** (no Docker locally).
+- **Phase 5 (extension zip):** `.github/workflows/build-extension.yml` — zips `helper/extension/` with
+  secret excludes (`data/config.json`, `*.env`) + a hard leak-assert (`grep -qE '(data/config\.json|
+  \.env)$'`). **Fully validated locally**: clean zip passes, planted dummy `data/config.json` is excluded,
+  and an un-excluded zip is correctly caught by the assert. README `build-extension` badge + Download blurb.
+- **Phase 6 (Win+mac CI):** `electron-builder.yml` gained `win:[nsis]` + `mac:[dmg]`
+  (`public.app-category.games`); `dist:win`/`dist:mac` scripts + root `dist:ui*` passthroughs;
+  `.github/workflows/build-windows.yml` (pwsh `.exe` assert) + `build-macos.yml` (`.dmg` assert) — **no
+  launch smoke** (Linux carries it). README `build-windows`/`build-macos` badges + 3-OS Download table.
+  Local mac `npm run dist:mac` regression build passed (dmg + `moves.json` shipped to the Resources tail).
+
+Both vendor submodules stayed git-clean throughout.
+
 ## Resume here (next chat)
 
-Start at **Phase 3** in [PACKAGING-PLAN.md](PACKAGING-PLAN.md): add the `PS_SMOKE` env guard in
-`whenReady` (after `createWindow()` + `loadMovesData()`):
-```ts
-if (process.env['PS_SMOKE']) { log.info('PS_SMOKE: boot ok, exiting'); app.exit(0) }
-```
-Then Phases 4-7. **Apply gotcha #1** (spaced binary name) when writing the Linux CI workflow.
+All 7 phases are complete. The one remaining owner action:
+
+- **Push the branch** so `build-linux`, `build-extension`, `build-windows`, `build-macos` run. Confirm
+  each goes green + uploads its artifact. **After the first Linux run**, verify the
+  `linux-unpacked/Pokemon Showdown Battle UI` path the xvfb smoke assumes (electron-builder may slugify
+  it — fix the workflow path in `build-linux.yml` if so).
+
+Optional follow-up (not part of this plan):
+- `release.yml` triggered on `v*` tags → run the three builds and attach all installers to a GitHub
+  Release (`softprops/action-gh-release`). Then point the README Download section at Releases instead of
+  Actions artifacts. (macOS signing + notarization is a separate, larger effort.)

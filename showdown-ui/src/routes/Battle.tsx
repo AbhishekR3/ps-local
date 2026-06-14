@@ -18,7 +18,7 @@ const colHeader: CSSProperties = {
   flexShrink: 0,
 }
 
-export default function Battle({ helperOpen }: { helperOpen: boolean }) {
+export default function Battle({ helperOpen, resyncSignal }: { helperOpen: boolean; resyncSignal: number }) {
   const gameRef        = useRef<HTMLDivElement>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
   const [helperWidth, setHelperWidth] = useState(640)
@@ -129,7 +129,7 @@ export default function Battle({ helperOpen }: { helperOpen: boolean }) {
         overflow: 'hidden',
       }}>
         <div style={colHeader}>Battle Helper</div>
-        <HelperPanel />
+        <HelperPanel resyncSignal={resyncSignal} />
       </div>
 
     </div>

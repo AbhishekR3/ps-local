@@ -1,0 +1,46 @@
+name: build-extension
+
+# Packages the Chromium MV3 extension (helper/extension/) into a downloadable zip users load unpacked.
+# HARD credential guard: content.js fetches data/config.json for auto-login creds, so the zip excludes
+# data/config.json + any .env, then a leak-assert fails the build if either ever slips in. Both files are
+# gitignored today; the assert keeps a future commit from leaking them through this artifact.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'helper/extension/**'
+      - '.github/workflows/build-extension.yml'
+  pull_request:
+    paths:
+      - 'helper/extension/**'
+      - '.github/workflows/build-extension.yml'
+
+jobs:
+  build-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Zip extension (excluding secrets)
+        run: |
+          cd helper
+          zip -r ../ps-local-extension.zip extension \
+            -x 'extension/data/config.json' -x '*.env' -x 'extension/.env' -x '*/.DS_Store'
+
+      - name: Leak-assert (no credentials in the zip)
+        # Precise pattern: only data/config.json (the auto-login creds) + any *.env — NOT all *.json
+        # (manifest.json and the data bundle are expected and fine).
+        run: |
+          if unzip -l ps-local-extension.zip | grep -qE '(data/config\.json|\.env)$'; then
+            echo 'CREDENTIAL LEAK: data/config.json or .env present in extension zip'
+            exit 1
+          fi
+          echo 'leak-assert passed — no credentials in zip'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps-local-extension
+          path: ps-local-extension.zip
+          if-no-files-found: error

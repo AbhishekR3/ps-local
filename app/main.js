@@ -60,6 +60,9 @@ const httpd = createLogger('static');
 const wlog = createLogger('writelog');
 
 if (configWarning) log.warn(configWarning);
+// Loud parity with showdown-ui (index.ts): saveLogs=false silently discards every battle log, so
+// warn once at startup instead of only a per-write DEBUG line.
+if (!config.saveLogs) log.warn('saveLogs=false — battle logging is DISABLED; no .txt files will be written');
 
 let serverProc = null;
 let staticServer = null;
@@ -117,7 +120,7 @@ function sanitize(name) {
 
 function writeLog(roomid, state, rawFrames) {
   // saveLogs:false (config.json) disables disk writes entirely — useful for spectating/testing
-  // without leaving files behind. The tracker still runs; we just skip the .txt/.raw.txt output.
+  // without leaving files behind. The tracker still runs; we just skip the .txt output.
   if (!config.saveLogs) {
     wlog.debug(`saveLogs=false — skipping log write for ${roomid} (turn=${state.turn})`);
     return;
@@ -135,15 +138,12 @@ function writeLog(roomid, state, rawFrames) {
     const prefix = state.mySide ? '' : 'SPEC_'; // SPEC_ marks games watched as a spectator
     const base = `${roomid}_${prefix}${p1}_vs_${p2}_${resultToken}_${Date.now()}`;
 
-    const rawPath = path.join(LOGS_DIR, `${base}.raw.txt`);
     const richPath = path.join(LOGS_DIR, `${base}.txt`);
 
-    const raw = rawFrames.join('\n');
-    fs.writeFileSync(rawPath, raw);
     const rich = generateBattleLog(state, rawFrames, movesData, TIMEZONE); // synchronous
     fs.writeFileSync(richPath, rich);
 
-    wlog.info(`wrote ${richPath} (${rich.length} B) + ${path.basename(rawPath)} (${raw.length} B)`);
+    wlog.info(`wrote ${richPath} (${rich.length} B)`);
   } catch (e) {
     wlog.error(`writeLog failed for ${roomid}: ${e && e.stack}`);
   }
@@ -207,7 +207,10 @@ function handleFrame(frameData) {
   log.debug(`frame ${roomid} turn=${st.turn} ended=${st.ended} bytes=${frameData.length}`);
 
   const hasWin = /\|win\|/.test(frameData);
-  const hasTie = /\|tie\|/.test(frameData);
+  // Line-anchored: the real tie frame is `|tie` (no trailing pipe), one line of its own. A bare
+  // /\|tie\|/ never matched; /\|tie/ would false-positive on chat (`|c|user|tie game`). Mirrors
+  // battleEndReason() in helper/extension/lib/logmeta.js (showdown-ui's extracted copy).
+  const hasTie = /^\|tie\b/m.test(frameData);
   const hasDeinit = /\|deinit/.test(frameData);
   let reason = null;
   if (hasWin) reason = 'win';

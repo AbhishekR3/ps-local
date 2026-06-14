@@ -6,25 +6,39 @@ const { ipcRenderer } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 
+// injected.js lives outside out/, so it's shipped via electron-builder extraResources to
+// process.resourcesPath when packaged. In dev it's read from the repo (out/preload → repo root).
+// `app.isPackaged` isn't available in a preload, so probe both paths instead of branching on a flag.
+// Keep these candidates in sync with the PS_SMOKE tap-load assertion in electron/main/index.ts.
+const tapCandidates = [
+  path.join(process.resourcesPath, 'helper', 'extension', 'injected.js'), // packaged
+  path.join(__dirname, '../../..', 'helper', 'extension', 'injected.js'),  // dev
+]
+
 const tapSrc = (() => {
-  try {
-    return fs.readFileSync(
-      path.join(__dirname, '../../..', 'helper', 'extension', 'injected.js'),
-      'utf8'
-    )
-  } catch (e: unknown) {
-    console.error('[ps-preload] cannot read tap source:', (e as Error).message)
-    return null
+  for (const p of tapCandidates) {
+    try {
+      return fs.readFileSync(p, 'utf8')
+    } catch { /* try next candidate */ }
   }
+  console.error('[ps-preload] cannot read tap source from any of:', tapCandidates.join(', '))
+  return null
 })()
 
-if (tapSrc) {
+if (!tapSrc) {
+  // No tap source → no WebSocket interception → the helper would never see a frame. Report it so
+  // main can show "Tap not active" instead of an endless "Waiting…".
+  ipcRenderer.send('ps-tap-error', { reason: 'tap source not found' })
+} else {
   try {
     // contextIsolation:false → preload shares the page window, so we can run the tap
     // inline with new Function() before any page script captures window.WebSocket.
     new Function(tapSrc)()  // eslint-disable-line no-new-func
+    console.log('[ps-preload] tap install ok')
+    ipcRenderer.send('ps-tap-ok')
   } catch (e: unknown) {
     console.error('[ps-preload] tap install failed:', (e as Error).message)
+    ipcRenderer.send('ps-tap-error', { reason: (e as Error).message })
   }
 }
 

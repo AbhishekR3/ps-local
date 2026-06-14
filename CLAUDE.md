@@ -28,12 +28,17 @@ npm run setup:ui         # install showdown-ui deps (first-time setup)
 npm start                # launch showdown-ui — wraps live play.pokemonshowdown.com
 npm run build:ui         # production build of showdown-ui
 
-# Packaging (downloadable installers) — run from showdown-ui/:
-cd showdown-ui && npm run dist        # build a packaged installer for the current OS (dmg on macOS)
-cd showdown-ui && npm run dist:linux  # build the Linux AppImage
+# Packaging (downloadable installers):
+npm run dist:ui           # build installer for the current OS (dmg on macOS)
+npm run dist:ui:linux     # Linux AppImage
+npm run dist:ui:win       # Windows NSIS installer
+npm run dist:ui:mac       # macOS dmg
 
-npm test                 # helper unit tests (= cd helper && node --test)
+npm test                 # all helper suites (= cd helper && node --test): parser/exporter/golden/edge
+                         # + guards.test.js (sync-invariant enforcement) + render.test.js (shared renderer)
+npm run test:smoke       # fast protocol gate (helper/test/smoke.mjs) — CI's first check, exits non-zero
 cd helper && node --test test/parser.test.js   # run a single test file
+npm run build:ability-desc  # regenerate data/abilities-desc.json (ability text for the helper pills)
 npm run apply-overlay    # write overlay/*.js onto the gitignored vendor config/config.js targets
 npm run update-upstream  # bump both submodules, rebuild, re-apply overlays, gate on helper tests
 
@@ -54,6 +59,7 @@ cd helper && node build-data.js
 - `PS_SYNTHETIC=1` — (`app/` only) drive `helper/test/fixtures/sample-battle.txt` through the real log
   path with no server/window/extension, write the log, quit. The C5 decoupling proof for CI.
 - `PS_NO_EXTENSION=1` — (`app/` only) skip `loadExtension`
+- `PS_SMOKE=1` — (`showdown-ui` only) boot, log "PS_SMOKE: boot ok", and exit 0. Used by the Linux CI launch smoke to prove the packaged app launches without running a full battle.
 
 ### Environment gotchas
 - **Node ≥ 22.6 is required** — `helper/build-data.js` imports `.ts` files via Node type-stripping;
@@ -82,8 +88,8 @@ CI testing and local-mode sandbox use only.
 4. `showdown-ui/electron/main/index.ts` keeps **one `BattleTracker` per room** (`Map<roomid, {tracker,
    rawFrames, lastSeen}>`). On `|win|`/`|tie|`/`|deinit|(turn≥1)` it calls `generateBattleLog` and
    writes to `logs/battle_info/`.
-   - **Own battle**: `<roomid>_<p1>_vs_<p2>_WIN_<winner>|TIE_<ts>.{txt,raw.txt}`
-   - **Spectator** (`state.mySide === null`): `<roomid>_SPEC_<p1>_vs_<p2>_WIN_<winner>|TIE_<ts>.{txt,raw.txt}`
+   - **Own battle**: `<roomid>_<p1>_vs_<p2>_WIN_<winner>|TIE_<ts>.txt`
+   - **Spectator** (`state.mySide === null`): `<roomid>_SPEC_<p1>_vs_<p2>_WIN_<winner>|TIE_<ts>.txt`
    - Crash/disconnect: `flushAllRooms()` wired into `before-quit`, `render-process-gone`,
      `uncaughtException` — in-progress battles saved as `INPROGRESS` files.
    - Stale rooms swept every 5 min, evicted after 30 min idle.
@@ -92,7 +98,8 @@ CI testing and local-mode sandbox use only.
 `helper/extension/lib/parser.js` (`class BattleTracker`, method **`feed(frame)`** — not `consume`) and
 `helper/extension/lib/exporter.js` (`generateBattleLog(state, rawFrames, movesData, timezone='UTC')` — **synchronous**,
 result strings `YOU WON`/`YOU LOST`/`TIE`/`IN PROGRESS`) are pure ESM with no chrome/browser APIs. They
-are imported by **both** the extension panel and the Electron main process (via dynamic `import()`).
+are imported by **both** the extension panel (extension runtime) and the Electron main process (statically
+imported — Rollup bundles them into `out/main/index.js` for packaging).
 Keep them dependency-free — coupling them to extension or Node-only APIs breaks the other consumer.
 
 ### The helper panel
@@ -104,8 +111,14 @@ coalesces renders per `requestAnimationFrame`, and renders via `src/lib/render.t
   the drag — the preload relays mouse events through IPC instead.
 - **Spectator mode**: `state.mySide === null` when watching; both players' cards render side by side.
   The main process writes spectator logs with the `SPEC_` filename prefix.
-- **Legacy extension panel** (`helper/extension/`): a Chrome MV3 extension used only in `app/`.
-  `panel.js`/`panel.css` are frozen-legacy; `render.ts` is the canonical helper UI going forward.
+- **Shared renderer (no longer forked)**: the HTML builders live once in
+  `helper/extension/lib/render.js` (a pure, dependency-free lib like `parser.js`/`lookup.js`). Both the
+  Chrome MV3 extension panel (`helper/extension/panel.js`) and showdown-ui (`src/lib/render.ts`, a thin
+  adapter that supplies the Vite asset base) import it, so they render identically. **panel.js/panel.css
+  are no longer frozen** — add a new helper-UI feature to `render.js` once and both surfaces get it.
+  `panel.css` and `src/styles/global.css` still each carry their own copy of the styles (keep them in
+  sync). The extension is **already Manifest V3** and runs on current Chromium (service worker, `action`,
+  `host_permissions`, `storage.session`) — there is no MV2 modernization debt.
 
 ### Config overlays (C4)
 `scripts/apply-overlay.js` copies `overlay/server-config.js` and `overlay/client-config.js` onto the
@@ -162,7 +175,7 @@ helper alongside the live PS client in one window. It imports the same pure libs
 feature parity for all official-mode functionality:
 
 - **Battle log writing (C5)**: `showdown-ui/electron/main/index.ts` runs the full C5 log path —
-  per-room `BattleTracker`, `generateBattleLog`, `.txt`/`.raw.txt` output to `logs/battle_info/`,
+  per-room `BattleTracker`, `generateBattleLog`, `.txt` output to `logs/battle_info/`,
   SPEC_ prefix for spectator games, `config.saveLogs` guard, `flushAllRooms()` on all exit paths,
   stale-room sweep (5 min), 100K frame hard cap.
 - **Config file**: reads `config.json` at repo root (`timezone`, `logLevel`, `saveLogs`). `PS_LOG_LEVEL`
@@ -178,16 +191,17 @@ feature parity for all official-mode functionality:
 - **The PS view uses the proven M5 tap config**: `contextIsolation:false` + `electron/preload/ps.ts`,
   which runs `helper/extension/injected.js` in-world (same as `app/preload.js` official mode). `ps.ts`
   `ipcRenderer.send('ps-frame')` → main drives the log writer **and** forwards to the helper renderer.
-- **Rendering lives in the renderer, mirroring the extension's `panel.js`**: `HelperPanel.tsx` owns a
-  `BattleTracker`, feeds relayed frames, coalesces renders per `requestAnimationFrame`, and renders via
-  `src/lib/render.ts` — a **verbatim port of `panel.js`'s HTML builders** (`breakdownCard`, `statBar`,
-  `moveChip`, `renderSideHtml`, …) injected with `dangerouslySetInnerHTML`. `src/styles/global.css`
-  ports `panel.css`, and `public/icons/categories/*.png` are copied from the extension. **showdown-ui
-  is now the canonical helper UI; `panel.js`/`panel.css` (the extension panel) are frozen-legacy and
-  may visually lag.** `render.ts` originated as a verbatim port but is intentionally allowed to diverge
-  for showdown-ui-only features (no level label, opponent-HP%, ability descriptions, the suppressed
-  "1 sets left" badge). Data-layer fixes still flow to both surfaces via the shared `helper/extension/lib`
-  (e.g. `lookup.js` percentage rounding + cosmetic-forme fallback). Format data is loaded lazily via Vite
+- **Rendering lives in the shared renderer**: `HelperPanel.tsx` owns a `BattleTracker`, feeds relayed
+  frames, coalesces renders per `requestAnimationFrame`, and renders via `src/lib/render.ts` injected
+  with `dangerouslySetInnerHTML`. `src/lib/render.ts` is a **thin adapter** over
+  `helper/extension/lib/render.js` — the **single shared source of truth** for the HTML builders
+  (`breakdownCard`, `statBar`, `statRangeBar`, `moveChip`, `renderSideHtml`, …), also imported by the
+  extension's `panel.js`. The adapter only supplies `opts.assetBase` (the Vite asset base for category
+  icons); `public/icons/categories/*.png` are copied from the extension. The former showdown-ui-only
+  features (stat range bars, opponent-HP%, ability descriptions, suppressed "1 sets left" badge, no level
+  label) now live in the shared `render.js`, so **both surfaces render identically** — they are no longer
+  allowed to diverge. Add new helper-UI features to `render.js`; keep `src/styles/global.css` and
+  `panel.css` (separate copies of the same rules) in sync. Format data is loaded lazily via Vite
   `import.meta.glob` in `src/lib/data.ts` (mirrors `helper/extension/lib/data.js`).
 - **electron-vite gotcha**: 2.x auto-entry detection only scans `src/`, so `electron.vite.config.ts`
   must declare main/preload/renderer entries explicitly. The renderer needs `server.fs.allow` widened to
@@ -201,7 +215,7 @@ feature parity for all official-mode functionality:
   dev path is unchanged. The parser/exporter libs are **statically imported** (hence bundled into
   `out/main/index.js`) rather than dynamically `import()`ed — required so they survive packaging.
   macOS builds are **unsigned** (first launch: right-click → Open, or `xattr -dr com.apple.quarantine`).
-  Full phase status: [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
+  CI builds Linux AppImage + Windows NSIS + macOS dmg on every push; see [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
 - **Intentional gaps vs `app/`** (by design, not bugs):
   - No local-mode server / static server / testclient auto-login — official mode only.
   - No `PS_SYNTHETIC=1` headless fixture-feed for CI (only `app/` has this).
@@ -214,11 +228,20 @@ feature parity for all official-mode functionality:
 WebSocket tap + pure libs (parser, exporter, lookup) + data bundle + tests · `app/` = legacy Electron
 app (local-mode sandbox + `PS_SYNTHETIC=1` CI path) · `overlay/` + `scripts/apply-overlay.js` =
 config overlays · `scripts/` = orchestration + root `package.json` scripts · `.github/workflows/` = CI
-· `docs/` = docs. Full design rationale and contracts (C1–C7 + C-tap) are in
-`PS-LOCAL-EXTRACTION-GUIDE.md`.
+(`test.yml`, `deep-test.yml`, `upstream-canary.yml`, `codacy.yml`, `build-linux.yml`, `build-windows.yml`,
+`build-macos.yml`, `build-extension.yml`) · `docs/` = docs. Full design rationale and contracts
+(C1–C7 + C-tap) are in `PS-LOCAL-EXTRACTION-GUIDE.md`; [docs/architecture.html](docs/architecture.html)
+is a generated 16-section architecture reference (the guard tests cite its §13 / §16).
 
 ## When changing things
 
+- **Hand-synced duplications are CI-enforced** (`helper/test/guards.test.js`): the contracts this doc
+  tells you to "keep in sync by hand" now fail `npm test` loudly if they drift. It asserts the
+  `AD_ANALYTICS_PATTERNS` ad-block lists in `app/main.js` and `showdown-ui/electron/main/index.ts` are
+  identical, that every class `render.js` emits is styled in **both** `panel.css` and `global.css` (or
+  neither), that `injected.js`'s localhost ports match `manifest.json`'s grants, and that `injected.js`
+  posts to `window.location.origin` never `'*'`. If you intentionally change one side, update the other
+  in the same commit — don't relax the guard.
 - **Touching `vendor/`**: don't — use an overlay or the `showdown-ui/`/`helper/` layers. Verify both
   submodules stay git-clean afterward.
 - **The WebSocket tap** (`helper/extension/injected.js`): its `isSim` URL filter must keep matching
@@ -235,3 +258,31 @@ config overlays · `scripts/` = orchestration + root `package.json` scripts · `
 - **Upstream bumps**: use `npm run update-upstream`; if helper tests fail, an upstream protocol change
   broke `parser.js`/`exporter.js` — see [docs/UPDATE-WORKFLOW.md](docs/UPDATE-WORKFLOW.md). The weekly
   `upstream-canary` workflow files an `upstream-breakage` issue on failure.
+
+### Undocumented assumptions the extension encodes (read before touching `helper/extension/`)
+These live in code with no other spec; breaking any one fails *silently* (a blank panel, dropped frames):
+- **Content-script load order** (`manifest.json` `run_at: document_start`): `injected.js` (MAIN world)
+  must patch `window.WebSocket` **before** PS's SockJS captures it, and `content.js` (ISOLATED) must
+  register its listener before `injected.js` posts. The spec does not guarantee inter-script order — it
+  works because Chrome runs both at `document_start`. `injected.js` warns ~15s after load if it has seen
+  no sim socket, and once if it sees an unrecognized SockJS frame prefix.
+- **SockJS framing** (`injected.js` `decodeSockJS`): assumes data arrives as `a[...]` JSON-array frames
+  (`o`/`h`/`c` are control frames). No version negotiation — if PS changes transport or framing, the tap
+  yields nothing.
+- **Cross-world messaging**: `injected.js` posts to `window.location.origin` (not `'*'`) tagged with the
+  `__psHelper` token (its only auth). `content.js`'s `frameHandler` must **not** add an `event.source ===
+  window` check (MAIN→ISOLATED delivery gives a different proxy; the check silently drops every frame).
+  `content.js` posts to the panel iframe with `PANEL_ORIGIN` (string-sliced from `runtime.getURL`).
+  `panel.js` reads the page origin from `?pageOrigin=`; under the extension runtime it now **refuses** the
+  `'*'` fallback when that param is missing (the wildcard is dev-only).
+- **localhost ports**: `injected.js` taps `:8000` (local-mode server) **and** `:8080`; `manifest.json`
+  must grant both in `host_permissions`/`matches`/`web_accessible_resources` or the extension never
+  injects on that port. Keep tap and manifest in lockstep.
+- **Brittle DOM selectors** (`content.js`): `autoHideRooms`/`autoLogin` fall back to text-matching
+  buttons ("Hide", "Choose name") and `input[name="username"|"password"]` — these break on any PS client
+  redesign. The battle room id is sniffed from `location.pathname`/`hash` with a `lastWireRoom` fallback.
+- **`storage.session`** (`background.js`): Chrome-only (guarded to `null` elsewhere); without it the
+  frame buffer does not survive a service-worker restart. The 500 ms persist debounce can also lose the
+  last frames if the worker is killed inside that window.
+- **Static data bundle**: `helper/extension/data/**` is frozen at build time; nothing detects staleness
+  after an upstream PS data change. Rebuild via `cd helper && node build-data.js`.
