@@ -36,7 +36,7 @@ export default function App() {
         borderBottom: '1px solid var(--border)',
       }}>
         <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14, letterSpacing: '0.02em' }}>
-          PS Local
+          Pokemon Showdown Battle UI
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button style={headerBtn} title="Open the battle-log folder" onClick={() => window.psUI.openLogs()}>

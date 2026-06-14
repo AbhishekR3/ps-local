@@ -24,15 +24,15 @@ const OUT_SETS = join(OUT, 'sets');
 const OUT_ITEMS = join(OUT, 'items');
 const OUT_ABILITIES = join(OUT, 'abilities');
 const OUT_TERAS = join(OUT, 'tera');
-const OUT_STATS = join(OUT, 'stats');
 const OUT_MOVES_FREQ = join(OUT, 'moves-freq');
+const OUT_STATS = join(OUT, 'stats');
 
 mkdirSync(OUT_SETS, { recursive: true });
 mkdirSync(OUT_ITEMS, { recursive: true });
 mkdirSync(OUT_ABILITIES, { recursive: true });
 mkdirSync(OUT_TERAS, { recursive: true });
-mkdirSync(OUT_STATS, { recursive: true });
 mkdirSync(OUT_MOVES_FREQ, { recursive: true });
+mkdirSync(OUT_STATS, { recursive: true });
 
 // --- Pokedex: keep only what the breakdown UI needs ---------------------------
 const { Pokedex } = await import(join(REPO, 'data', 'pokedex.ts'));
@@ -94,11 +94,21 @@ for (let gen = 1; gen <= 9; gen++) {
 writeFileSync(join(OUT, 'formats.json'), JSON.stringify(available));
 console.log(`sets: ${available.length} files -> ${available.join(', ')}`);
 
+// --- Stat distributions: nature multiplier used by the MC loop below -----------
+const NATURE_PLUS  = { adamant:'atk', modest:'spa', jolly:'spe', timid:'spe', brave:'atk', quiet:'spa', hasty:'spe', naive:'spe', lonely:'atk', mild:'spa', naughty:'atk', rash:'spa', bold:'def', impish:'def', lax:'def', relaxed:'def', calm:'spd', careful:'spd', gentle:'spd', sassy:'spd' };
+const NATURE_MINUS = { adamant:'spa', modest:'atk', jolly:'spa', timid:'atk', brave:'spe', quiet:'spe', hasty:'def', naive:'spd', lonely:'def', mild:'def', naughty:'spd', rash:'spd', bold:'atk', impish:'spa', lax:'spd', relaxed:'spe', calm:'atk', careful:'spa', gentle:'def', sassy:'spe' };
+function natureMultiplier(nature, stat) {
+	const n = (nature || '').toLowerCase();
+	if (NATURE_PLUS[n] === stat) return 1.1;
+	if (NATURE_MINUS[n] === stat) return 0.9;
+	return 1.0;
+}
+
 // --- Predicted items + abilities: Monte-Carlo the real team generator -----------
 // Random-battle items and abilities aren't stored statically — they're chosen at generation
 // time. We run the actual generator many times per species and tally what it picks, keyed by
 // role so predictions sharpen once revealed moves narrow the set (lookup.js).
-const ROUNDS = 200;
+const ROUNDS = 1000;
 
 // "gen9" -> singles, "gen9doubles" -> doubles. Returns null for non-standard keys.
 function keyToFormat(key) {
@@ -117,8 +127,8 @@ if (!Teams?.getGenerator) {
 	const itemKeys = [];
 	const abilityKeys = [];
 	const teraKeys = [];
-	const statsKeys = [];
 	const movesFreqKeys = [];
+	const statsKeys = [];
 	for (const key of available) {
 		const meta = keyToFormat(key);
 		if (!meta) continue;
@@ -135,8 +145,8 @@ if (!Teams?.getGenerator) {
 		const itemOut = {};
 		const abilityOut = {};
 		const teraOut = {};
-		const statsOut = {};
 		const movesFreqOut = {};
+		const statsOut = {};
 		for (const id of speciesIds) {
 			const itemRoles = {};
 			const abilityRoles = {};
@@ -144,7 +154,6 @@ if (!Teams?.getGenerator) {
 			let sawItem = false;
 			let sawAbility = false;
 			let sawTera = false;
-			const statPre = {}; // pre-nature stat min/max from actual EVs/IVs
 			// { role: { total: N, moves: { moveId: count } } }
 			const moveFreqRoles = {};
 			for (let i = 0; i < ROUNDS; i++) {
@@ -176,30 +185,24 @@ if (!Teams?.getGenerator) {
 					const mid = String(mv).toLowerCase().replace(/[^a-z0-9]/g, '');
 					moveFreqRoles[role].moves[mid] = (moveFreqRoles[role].moves[mid] || 0) + 1;
 				}
-				const evs = set.evs || {};
-				const ivs = set.ivs || {};
-				const level = set.level;
-				const baseStats = Pokedex[id]?.baseStats;
-				if (baseStats && level) {
-					for (const stat of ['atk', 'def', 'spa', 'spd', 'spe']) {
-						const base = baseStats[stat];
-						if (base === undefined) continue;
-						const iv = ivs[stat] ?? 31;
-						const ev = evs[stat] ?? 0;
-						const val = Math.floor((2 * base + iv + Math.floor(ev / 4)) * level / 100) + 5;
-						if (!statPre[stat]) {
-							statPre[stat] = { min: val, max: val };
-						} else {
-							if (val < statPre[stat].min) statPre[stat].min = val;
-							if (val > statPre[stat].max) statPre[stat].max = val;
-						}
-					}
+				// Track per-stat min/max across all MC iterations (no HP — it's revealed in battle).
+				const maxIv = meta.gen < 3 ? 30 : 31;
+				for (const stat of ['atk', 'def', 'spa', 'spd', 'spe']) {
+					const base = pokedex[id]?.baseStats?.[stat];
+					if (base == null) continue;
+					const iv = Math.min(set.ivs?.[stat] ?? maxIv, maxIv);
+					const ev = set.evs?.[stat] ?? 0;
+					const lvl = set.level ?? 100;
+					const mult = natureMultiplier(set.nature, stat);
+					const val = Math.trunc(Math.trunc((2 * base + iv + Math.trunc(ev / 4)) * lvl / 100 + 5) * mult);
+					const cur = statsOut[id]?.[stat];
+					if (!cur) (statsOut[id] = statsOut[id] || {})[stat] = { min: val, max: val };
+					else { cur.min = Math.min(cur.min, val); cur.max = Math.max(cur.max, val); }
 				}
 			}
 			if (sawItem) itemOut[id] = itemRoles;
 			if (sawAbility) abilityOut[id] = abilityRoles;
 			if (sawTera) teraOut[id] = teraRoles;
-			if (Object.keys(statPre).length) statsOut[id] = statPre;
 			if (Object.keys(moveFreqRoles).length) movesFreqOut[id] = moveFreqRoles;
 		}
 		if (Object.keys(itemOut).length) {
@@ -217,22 +220,22 @@ if (!Teams?.getGenerator) {
 			teraKeys.push(key);
 			console.log(`tera/${key}.json: ${Object.keys(teraOut).length} species`);
 		}
-		if (Object.keys(statsOut).length) {
-			writeFileSync(join(OUT_STATS, `${key}.json`), JSON.stringify(statsOut));
-			statsKeys.push(key);
-			console.log(`stats/${key}.json: ${Object.keys(statsOut).length} species`);
-		}
 		if (Object.keys(movesFreqOut).length) {
 			writeFileSync(join(OUT_MOVES_FREQ, `${key}.json`), JSON.stringify(movesFreqOut));
 			movesFreqKeys.push(key);
 			console.log(`moves-freq/${key}.json: ${Object.keys(movesFreqOut).length} species`);
 		}
+		if (Object.keys(statsOut).length) {
+			writeFileSync(join(OUT_STATS, `${key}.json`), JSON.stringify(statsOut));
+			statsKeys.push(key);
+			console.log(`stats/${key}.json: ${Object.keys(statsOut).length} species`);
+		}
 	}
 	console.log(`items: ${itemKeys.length} files -> ${itemKeys.join(', ')}`);
 	console.log(`abilities: ${abilityKeys.length} files -> ${abilityKeys.join(', ')}`);
 	console.log(`tera: ${teraKeys.length} files -> ${teraKeys.join(', ')}`);
-	console.log(`stats: ${statsKeys.length} files -> ${statsKeys.join(', ')}`);
 	console.log(`moves-freq: ${movesFreqKeys.length} files -> ${movesFreqKeys.join(', ')}`);
+	console.log(`stats: ${statsKeys.length} files -> ${statsKeys.join(', ')}`);
 }
 
 console.log(`\nBundle written to ${OUT}`);
