@@ -8,6 +8,41 @@
 
 Need to fit all of these into phases that I will need to validate at each step and tell you any fixes to be made in the middle as I validate each step.
 
+> **2026-06-14 update — finalized & re-phased.** Five additional owner work items (README rewrite, CI
+> greening, Codacy grade) are folded in below as **Parts 6–8**, and everything is sequenced into the
+> **Execution Phases** table. The original **Parts 1–4** are unchanged and carried forward; **Part 5**
+> (v1.0.0 release readiness) remains **DELAYED — do not implement**.
+
+---
+
+## Execution Phases (each independently validated before the next)
+
+The owner validates after every phase. Order: README (P5) is last because it must reflect the final
+badge set (P1), the portable download types (P3), and the from-source electron download.
+
+| Phase | Scope | Items / Parts | Validation gate |
+|---|---|---|---|
+| **P1** | CI greening + new `build-electron.yml` | items 2,3,4 + Part 6 | all build-* badges green; canary green via dispatch; vendor clean |
+| **P2** | Codacy grade B→A | item 5 / Part 7 | local CLI shows fewer issues / grade up; build + tests pass |
+| **P3** | Portable targets + runtime icon | Part 1 + Part 2 | `dist/` has installer **and** portable per OS; icon swap works |
+| **P4** | Lean-up | Part 3 | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
+| **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | renders on GitHub; exactly 7 badges; Downloads table complete |
+| **P6** | Docs sync + final sweep | — | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; vendor clean; suite green |
+
+**Cross-cutting decisions locked 2026-06-14 (do not re-ask):**
+- **Codacy (Part 7): the pasted "Fix Issues" patch is corrupt — never `pbpaste | patch` it.** Many
+  markdown hunks contain Codacy's review *prose* as literal file content (e.g. replacing `# CLAUDE.md`
+  with "Create separate files: SOUL.md…"). Even the legit `.ts/.tsx` hunks break the build: `strict` is
+  on and they turn `catch (e: any)` into `catch (e: unknown)` while leaving `e.code`/`e.message`/`e.stack`
+  accesses that don't compile on `unknown`. Drive the grade up via the local CLI (`.codacy/cli.sh`).
+- **"build-electron app" badge = a new `build-electron.yml`** (Part 6) that builds & launches the
+  Electron app **from source** (`electron-vite build` → `out/`, no `electron-builder` packaging). It is a
+  distinct distributable: the OS-agnostic, run-from-terminal / hack-the-codebase app, separate from the
+  per-OS `.dmg/.exe/.AppImage` installers.
+- `noPropertyAccessFromIndexSignature` is **not** set, so ESLint dot-notation fixes (`process.env.FOO`)
+  compile fine. The only build-breaking patch hunks are the unnarrowed `any`→`unknown` ones.
+- Per owner global rules: **every `git push` / PR / tag is owner-confirmed**; vendor submodules must stay
+  git-clean (`git -C vendor/... status --porcelain` empty) after any local upstream repro.
 
 ## Context
 
@@ -295,8 +330,147 @@ automation rule, reflect any feature/distribution changes back into `CLAUDE.md`.
 
 ---
 
+## Part 6 — CI: green the builds + new `build-electron.yml` (Phase P1; items 2, 3, 4 + item 1 badge)
+
+> **Status 2026-06-14 — diagnosed, fixed locally, awaiting a push to confirm green in CI.**
+> Confirmed root causes from the real run logs (`gh run view --log-failed`):
+> - **build-linux**: the AppImage built fine; the xvfb smoke failed with `No such file or directory` —
+>   the Linux unpacked executable is named **`showdown-ui`** (electron-builder uses package.json `name`),
+>   not `Pokemon Showdown Battle UI` (productName, used only for the macOS `.app` / Windows `.exe`).
+>   **Verified** by a Docker `electronuserland/builder` build → `dist/linux-unpacked/showdown-ui` exists.
+>   **Fixed**: smoke path corrected + `workflow_dispatch` added.
+> - **upstream-canary**: died in 12 s at `git submodule update --remote --merge` with `refusing to merge
+>   unrelated histories` — the runner checks submodules out shallow, so the pinned gitlink and the upstream
+>   tip share no common ancestor. **Fixed**: switched to checkout mode (`git submodule update --remote
+>   --force --recursive`), **validated locally** (bumps a8376a2 → upstream tip cleanly, vendor restores clean).
+> - **build-windows**: **already passing** (latest run green, 2m18s) — the "no status" was a stale badge
+>   before the run finished. Added `workflow_dispatch` for on-demand runs anyway.
+> - **build-electron.yml** (new): from-source `electron-vite build` + xvfb `PS_SMOKE` launch. The launch
+>   logic was **validated locally on macOS** (`PS_SMOKE: tap source ok` + `boot ok, exiting`, exit 0).
+
+### 6.0 — Diagnose with real logs first (read-only)
+Before guessing, pull the actual failing logs:
+```bash
+gh run list --workflow=build-linux.yml   --limit 5
+gh run view <id> --log-failed            # exact build-linux error
+gh run list --workflow=build-windows.yml --limit 5   # confirm "no status" = no completed run on main
+gh run list --workflow=upstream-canary.yml --limit 5
+gh run view <id> --log-failed            # canary: protocol break vs infra
+```
+
+### 6.1 — `upstream-canary` re-green (item 2)
+`.github/workflows/upstream-canary.yml` bumps both submodules to upstream HEAD, rebuilds, runs
+`cd helper && node --test` + `npm run test:smoke`, and files an `upstream-breakage` issue on failure. It
+**does not commit** the bump. Local repro on a throwaway branch (no push, no submodule commit):
+```bash
+git checkout -b canary-check
+git submodule update --remote --merge
+cd vendor/pokemon-showdown && npm ci && npm run build && cd ../..
+cd helper && npm install && node --test && cd ..
+npm run test:smoke
+```
+- **Tests pass against upstream latest** → June 8 2026 failure was transient/infra. Fix = re-run via
+  Actions → `upstream-canary` → **Run workflow** (`workflow_dispatch` already exists) until green. No code change.
+- **Tests fail** → genuine upstream protocol break in `helper/extension/lib/parser.js` / `exporter.js`.
+  Fix per `docs/UPDATE-WORKFLOW.md`; refresh golden if exporter formatting changed
+  (`node helper/test/golden.test.js --update`); optionally pin the bump via `npm run update-upstream`.
+- **Cleanup (critical — protect the vendor invariant):**
+  ```bash
+  git checkout main && git branch -D canary-check
+  git submodule update --init --recursive
+  git -C vendor/pokemon-showdown status --porcelain        # must be empty
+  git -C vendor/pokemon-showdown-client status --porcelain # must be empty
+  ```
+- Optional hardening: pin canary Node to `22`; absorb Part 3's vendor-server-build step here.
+
+### 6.2 — `build-linux` (item 3)
+Native AppImage on macOS isn't supported by electron-builder. Two-tier local verification:
+- **Tier 1 (fast, OS-agnostic — catches most failures):**
+  `cd showdown-ui && npm ci && npm run build` (electron-vite TS compile of main+preload+renderer).
+- **Tier 2 (true Linux AppImage, exactly as CI):**
+  ```bash
+  docker run --rm -v "$PWD":/project -v ~/.cache/electron:/root/.cache/electron \
+    -w /project/showdown-ui electronuserland/builder:latest \
+    bash -lc "npm ci && npm run dist:linux && ls -la dist/*.AppImage"
+  ```
+  The xvfb `PS_SMOKE` step (`"…/linux-unpacked/Pokemon Showdown Battle UI" --no-sandbox` → grep
+  `PS_SMOKE: tap source ok`) runs inside the container with `xvfb-run`.
+- Apply whatever 6.0 revealed (common: TS error, productName path drift, electron download blocked). Add
+  `workflow_dispatch` so it's re-runnable on demand.
+
+### 6.3 — `build-windows` "no status" (item 4)
+"No status" means the badge has **no completed run on `main`** — the path-filtered triggers never fired
+on a main push (or only ran on PRs).
+- **Fix the status:** add `workflow_dispatch` and run it once on `main`.
+- **Local repro:** Tier 1 = `cd showdown-ui && npm ci && npm run build`. Tier 2 = cross-build via the
+  wine builder image (most reliable on Apple Silicon):
+  ```bash
+  docker run --rm -v "$PWD":/project -w /project/showdown-ui \
+    electronuserland/builder:wine bash -lc "npm ci && npm run dist:win && ls -la dist/*.exe"
+  ```
+  (`brew install --cask wine-stable` + `npm run dist:win` natively is the flakier non-Docker alternative.)
+
+### 6.4 — New `build-electron.yml` ("build-electron app" badge, item 1)
+New `.github/workflows/build-electron.yml`, `ubuntu-latest`, Node 22, same path triggers as the other
+build-* workflows plus `workflow_dispatch`:
+- `cd showdown-ui && npm ci`
+- `cd showdown-ui && npm run build` (electron-vite production build → `out/`)
+- `xvfb-run -a env PS_SMOKE=1 npx --prefix showdown-ui electron showdown-ui --no-sandbox` → tee to
+  `smoke.log`, `grep -q 'PS_SMOKE: tap source ok'` (from-source app launches + tap source ships)
+- upload-artifact `ps-local-electron-app` → `showdown-ui/out/**` (optional: built app, no installer)
+
+Distinct from build-linux/win/mac: it proves the **raw Electron app builds and boots from source** — the
+run-from-terminal / hack-the-codebase distributable, independent of OS installers.
+
+---
+
+## Part 7 — Codacy grade B→A (Phase P2; item 5, proper lint-fix)
+
+Work on a branch off `main`, **driven from the local CLI, not the pasted patch.**
+
+1. **Baseline:** `bash .codacy/cli.sh analyze` (tools per `.codacy/codacy.yaml`: eslint@8.57, lizard,
+   opengrep, pmd, trivy). Capture current issue list + grade.
+2. **Apply safe fixes** (owner-authored files only; `.codacy.yaml` already excludes `vendor/`,
+   `node_modules/`, `helper/extension/data/`, `dist/`, `logs/`):
+   - **ESLint TS/React** (`showdown-ui/electron/**`, `showdown-ui/src/**`): `@ts-ignore`→`@ts-expect-error`;
+     wrap bare-expression arrow bodies (`() => cb()` → `() => { cb(); }`); `||`→`??` where semantics hold;
+     `dot-notation` env access; `type PsStatus`→`interface PsStatus`. **`any`→`unknown` MUST add narrowing**
+     so `strict` compiles: `catch (e: unknown) { const err = e instanceof Error ? e : new Error(String(e)); … err.stack … }`
+     — never leave `.code`/`.message`/`.stack` on a bare `unknown`.
+   - **Markdownlint** (trailing whitespace, blank lines around headings/lists): apply via a formatter
+     (`markdownlint --fix` / prettier), **never by hand-copying the corrupt patch hunks**.
+   - **lizard / pmd / opengrep**: only clear, low-risk findings; defer anything behavioral.
+3. **Verify before commit:** `cd showdown-ui && npm run build` clean · `npm test` · `npm run test:smoke` ·
+   `.codacy/cli.sh analyze` shows fewer issues / improved grade.
+4. Push the branch + open PR **only on owner confirmation**.
+
+---
+
+## Part 8 — Full README rewrite (Phase P5; item 1, lean rewrite — folds in Part 4 + Downloads)
+
+Recreate `README.md` from scratch — lean, keeping these sections:
+- **Title + one-line pitch.**
+- **Badge row — exactly these 7, in order:** `test`, `build-electron` (label "build-electron app"),
+  `build-linux`, `build-windows`, `build-macos`, `build-extension` (label "build-chromium-extension"),
+  `Codacy Badge`. **Drop** the current `deep-test`, `upstream-canary`, and `License` badges (the
+  `upstream-canary` *workflow* stays — only its badge is dropped).
+- **Screenshots** (Part 4): one hero under the title + 3 placeholders → new `docs/assets/`
+  (`panel.png`, `battle-view.png`, `log-sample.png`) + a "screenshots to capture" checklist.
+- **Downloads** table — every distribution type, including the new **Electron app (from source)** row
+  (git clone + `npm start`, or the `ps-local-electron-app` artifact from `build-electron`) as a
+  first-class entry alongside the OS installers/portables and the Chromium extension. Keep the
+  macOS-unsigned note; demote the CI-artifacts fallback below it.
+- **Quickstart · How logs are saved · Helper panel · Privacy · Troubleshooting · Updating upstream ·
+  Contributing · Credits (unchanged) · License (text link, not a badge).**
+
+Create `docs/assets/` (placeholder markup ready; owner drops real PNGs later).
+
+---
+
 ## Critical files
 
+- `.github/workflows/build-electron.yml` (new), `build-linux.yml`/`build-windows.yml` (+`workflow_dispatch`),
+  `upstream-canary.yml` (re-green) — Part 6
 - `showdown-ui/electron-builder.yml` — portable targets (Part 1)
 - `showdown-ui/electron/main/index.ts` — `iconPath` config + window icon (Part 2)
 - `config.example.json` — document `iconPath`
