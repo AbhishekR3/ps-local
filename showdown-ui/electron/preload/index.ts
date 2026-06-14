@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('psUI', {
     ipcRenderer.removeAllListeners('ps-frame')
   },
 
+  // Replay buffered frames for the most-recently-active room — called on mount so a battle
+  // whose init frames preceded the renderer is reconstructed instead of lost.
+  getBuffer: (): Promise<{ frames: string[]; room: string | null }> => ipcRenderer.invoke('get-buffer'),
+
   setGameBounds: (rect: { x: number; y: number; width: number; height: number }) => {
     ipcRenderer.send('set-game-bounds', rect)
   },

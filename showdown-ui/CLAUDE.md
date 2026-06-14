@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A standalone Electron + React + TypeScript app (`electron-vite`) that replaces the floating extension panel with a **native, docked** battle helper. It is completely independent of `../app/` — `npm start` (the main app) is never affected. It imports shared pure libs from `../helper/extension/lib/` and JSON from `../helper/extension/data/`.
+A standalone Electron + React + TypeScript app (`electron-vite`) that is the **intended replacement for `../app/`**. It provides a native, docked battle helper alongside the live PS client in one window, and as of the C5 port it also writes the same rich battle logs that `../app/` produced. It imports shared pure libs from `../helper/extension/lib/` and JSON from `../helper/extension/data/`.
+
+`../app/` remains in the repo as a fallback but is no longer the primary app.
 
 ## Commands
 
@@ -29,12 +31,15 @@ Two Electron surfaces share one native window:
 
 | Channel | Direction | Purpose |
 |---|---|---|
-| `ps-frame` | psView preload → main → helper renderer | Battle frame relay |
+| `ps-frame` | psView preload → main → helper renderer | Battle frame relay + log writer input |
+| `get-buffer` | renderer → main (invoke) | Replay buffered frames on mount |
 | `set-game-bounds` | renderer → main | Positions psView over the game container |
 | `begin-resize` / `end-resize` | renderer → main | Toggles drag-relay mode |
 | `ps-drag-move` | psView preload → main | Cursor X while divider is dragged over psView |
 | `ps-drag-end` | psView preload → main | Drag ended while cursor was over psView |
 | `resize-drag` / `resize-drag-end` | main → renderer | Forwards drag position to renderer |
+| `open-external` | renderer → main | Opens http(s) URL in system browser |
+| `open-logs` | renderer → main | Opens `logs/battle_info/` in Finder |
 
 The psView is **never hidden** during divider drags (hiding blanks the screen). Instead the preload relays `mousemove`/`mouseup` through IPC so the resize animation stays smooth.
 
@@ -70,7 +75,26 @@ Do **not** "fix" these back toward `panel.js`. Pure data-layer changes still bel
 - Preload: `electron/preload/index.ts` + `electron/preload/ps.ts`
 - Renderer: `index.html` with relative `./src/main.tsx` script src
 
+### Battle log writing (C5 — ported from `../app/main.js`)
+`electron/main/index.ts` now drives the full C5 log path, identical in contract to `../app/main.js`:
+- Per-room `rooms` map (one `BattleTracker` + raw frame buffer each). Keyed separately from the display `buffers` map.
+- `handleFrame()` called on every `ps-frame` IPC message; detects `|win|`, `|tie|`, `|deinit|` to flush.
+- `writeLog()` writes `<roomid>_{prefix}<p1>_vs_<p2>_{result}_{ts}.{txt,raw.txt}` to `../logs/battle_info/`.
+- SPEC_ prefix for spectator games (`state.mySide === null`).
+- `config.saveLogs = false` suppresses disk writes (tracker still runs).
+- `flushAllRooms()` wired into `before-quit`, `window-all-closed`, `render-process-gone`, `uncaughtException`.
+- Stale-room sweep every 5 min; evict after 30 min idle (saved as INPROGRESS).
+- Hard frame cap: 100,000 frames/room; flushes + evicts on overflow.
+
+**Tradeoff vs `../app/main.js`**: `../app/` had `PS_SYNTHETIC=1` (headless fixture feed for CI). showdown-ui has no equivalent — add it if CI coverage of the log path is required.
+
+### Config (`config.json` at repo root)
+Loaded at startup before the logger initializes. Keys: `timezone` (IANA, default `UTC`), `logLevel` (`DEBUG`/`INFO`/`WARN`/`ERROR`, default `INFO`), `saveLogs` (bool, default `true`). Env vars `PS_LOG_LEVEL` and `PS_TIMEZONE` override the file. Missing `config.json` is normal (defaults apply silently); malformed JSON logs a warning.
+
+### Logging
+`electron/main/index.ts` has an inline logger (no separate file) that mirrors `../app/logger.js` format: `ISO [LEVEL] [ns] msg`. Threshold from `PS_LOG_LEVEL`. Writes to `../logs/debug/showdown-ui-<ts>.log` (separate file from `app-<ts>.log`). Two namespaces: `ui-main` (startup/frames/rooms) and `ui-wlog` (log-writer events).
+
 ### Known gaps (by design, not bugs)
-- Only the most-recently-active battle is tracked — `BattleTracker.feed()` auto-resets on a new roomid; no foreground-room routing.
-- No battle log writing (that's `../app/main.js`'s job).
-- Login is manual / official-mode only, but persists via `partition:'persist:showdown-ui'`.
+- Only the most-recently-active battle is tracked by the renderer — `BattleTracker.feed()` auto-resets on a new roomid; no foreground-room routing. The log writer in main maintains a full `rooms` map so multiple concurrent rooms are logged correctly.
+- No local-mode server or testclient auto-login — official mode only; login persists via `partition:'persist:showdown-ui'`.
+- No `PS_SYNTHETIC=1` headless mode for CI (see above).

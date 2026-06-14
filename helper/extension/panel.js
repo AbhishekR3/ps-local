@@ -371,10 +371,16 @@ window.addEventListener('message', (event) => {
 	if (PAGE_ORIGIN !== '*' && event.origin !== PAGE_ORIGIN) return; // only our parent page posts here
 	if (event.data?.type === 'ps-frame') {
 		const isBattle = typeof event.data.data === 'string' && event.data.data.startsWith('>battle-');
+		// Capture the tracker's current roomid before feed() so a mismatch (incoming frame for a
+		// different room than the tracker is on) is visible — that's the signature of feed()'s
+		// auto-reset kicking in for a fresh battle vs. an in-progress one.
+		const prevRoom = tracker.state.roomid;
+		const incomingRoom = isBattle ? (event.data.data.split('\n', 1)[0].slice(1).trim().match(/^battle-[a-z0-9]+-\d+/)?.[0] || null) : null;
 		tracker.feed(event.data.data);
 		const s = tracker.state;
 		if (isBattle) {
-			console.log('[PSH panel] ps-frame recv (battle) → state formatId=' + s.formatId +
+			console.log('[PSH panel] ps-frame recv (battle) trackerRoom=' + prevRoom + '→' + s.roomid +
+				' incoming=' + incomingRoom + ' formatId=' + s.formatId +
 				' tier=' + s.tier + ' mySide=' + s.mySide + ' activeCount=' + Object.keys(s.active).length);
 		}
 		scheduleRender();

@@ -1,23 +1,216 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, shell, session } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'fs'
+import { pathToFileURL } from 'url'
 
-// Repo root relative to the built main process (out/main → out → showdown-ui → repo root). The main
-// app (../app/main.js) writes battle logs here; showdown-ui only opens the folder for the user.
+// Repo root relative to the built main process (out/main → out → showdown-ui → repo root).
 const REPO_ROOT = join(__dirname, '..', '..', '..')
 const LOGS_DIR  = join(REPO_ROOT, 'logs', 'battle_info')
 const REPO_URL  = 'https://github.com/AbhishekR3/ps-local'
 
-// ── IPC: header actions (open repo / open logs folder) ────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
+// config.json at the repo root (gitignored; config.example.json is the committed template).
+// Env var PS_LOG_LEVEL and PS_TIMEZONE still win over the file.
+interface Config { timezone: string; logLevel: string; saveLogs: boolean }
+let _configWarning: string | null = null
+function loadConfig(): Config {
+  const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
+  try {
+    return { ...defaults, ...JSON.parse(readFileSync(join(REPO_ROOT, 'config.json'), 'utf8')) }
+  } catch (e: any) {
+    if (e.code !== 'ENOENT') _configWarning = `config.json invalid (${e.message}) — using defaults`
+    return defaults
+  }
+}
+const config = loadConfig()
+if (config.logLevel && !process.env['PS_LOG_LEVEL']) process.env['PS_LOG_LEVEL'] = config.logLevel
+const TIMEZONE = process.env['PS_TIMEZONE'] || config.timezone
+
+// ── Logger ────────────────────────────────────────────────────────────────────
+// Mirrors app/logger.js format: "ISO [LEVEL] [ns] msg", PS_LOG_LEVEL threshold, logs/debug/ sink.
+const LOG_LEVELS: Record<string, number> = { DEBUG: 10, INFO: 20, WARN: 30, ERROR: 40 }
+const LOG_THRESHOLD = LOG_LEVELS[(process.env['PS_LOG_LEVEL'] || 'INFO').toUpperCase()] ?? LOG_LEVELS['INFO']
+
+let _logFile: string | null = null
+function logFile(): string {
+  if (_logFile) return _logFile
+  mkdirSync(join(REPO_ROOT, 'logs', 'debug'), { recursive: true })
+  const ts = new Date().toISOString().replace(/[:.]/g, '-')
+  _logFile = join(REPO_ROOT, 'logs', 'debug', `showdown-ui-${ts}.log`)
+  return _logFile
+}
+
+function logEmit(level: string, ns: string, msg: string): void {
+  if ((LOG_LEVELS[level] ?? 0) < LOG_THRESHOLD) return
+  const line = `${new Date().toISOString()} [${level.padEnd(5)}] [${ns}] ${msg}`
+  ;(level === 'WARN' || level === 'ERROR' ? console.error : console.log)(line)
+  try { appendFileSync(logFile(), line + '\n') } catch { /* best-effort */ }
+}
+
+function createLogger(ns: string) {
+  return {
+    debug: (m: string) => logEmit('DEBUG', ns, m),
+    info:  (m: string) => logEmit('INFO',  ns, m),
+    warn:  (m: string) => logEmit('WARN',  ns, m),
+    error: (m: string) => logEmit('ERROR', ns, m),
+  }
+}
+
+const log  = createLogger('ui-main')
+const wlog = createLogger('ui-wlog')
+
+if (_configWarning) log.warn(_configWarning)
+
+// ── ESM helper libs (loaded once at ready) ────────────────────────────────────
+let BattleTracker: any = null
+let generateBattleLog: ((state: any, rawFrames: string[], movesData: any, tz: string) => string) | null = null
+let movesData: Record<string, any> = {}
+
+async function loadHelperLibs(): Promise<void> {
+  const parser   = await import(pathToFileURL(join(REPO_ROOT, 'helper', 'extension', 'lib', 'parser.js')).href)
+  const exporter = await import(pathToFileURL(join(REPO_ROOT, 'helper', 'extension', 'lib', 'exporter.js')).href)
+  BattleTracker    = parser.BattleTracker
+  generateBattleLog = exporter.generateBattleLog
+  log.info('helper libs loaded (parser + exporter)')
+}
+
+function loadMovesData(): void {
+  const p = join(REPO_ROOT, 'helper', 'extension', 'data', 'moves.json')
+  try {
+    movesData = JSON.parse(readFileSync(p, 'utf8'))
+    log.info(`movesData loaded: ${Object.keys(movesData).length} moves`)
+  } catch (e: any) {
+    movesData = {}
+    log.warn(`movesData not loaded (${e?.message}); rich logs will use bare move ids`)
+  }
+}
+
+// ── Battle log writer (C5) ────────────────────────────────────────────────────
+// Per-room accumulators: roomid → { tracker, rawFrames, lastSeen }.
+// One tracker per room: feed() auto-resets on a new roomid, so a shared tracker would thrash.
+interface RoomEntry { tracker: any; rawFrames: string[]; lastSeen: number }
+const rooms = new Map<string, RoomEntry>()
+
+const STALE_ROOM_MS      = 30 * 60 * 1000  // evict rooms idle longer than this (saved as INPROGRESS)
+const MAX_FRAMES_PER_ROOM = 100_000         // hard cap to bound memory
+const SWEEP_INTERVAL_MS  = 5 * 60 * 1000   // stale-room sweep cadence
+
+function roomidOf(frame: string): string | null {
+  if (!frame || frame[0] !== '>') return null
+  const nl = frame.indexOf('\n')
+  const firstLine = (nl === -1 ? frame.slice(1) : frame.slice(1, nl)).trim()
+  const m = firstLine.match(/^battle-[a-z0-9]+-\d+/)
+  return m ? m[0] : null
+}
+
+function sanitize(name: string | undefined): string {
+  return (name || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
+function writeLog(roomid: string, state: any, rawFrames: string[]): void {
+  if (!config.saveLogs) {
+    wlog.debug(`saveLogs=false — skipping log write for ${roomid} (turn=${state.turn})`)
+    return
+  }
+  if (!generateBattleLog) {
+    wlog.warn(`generateBattleLog not loaded yet — skipping write for ${roomid}`)
+    return
+  }
+  try {
+    mkdirSync(LOGS_DIR, { recursive: true })
+
+    const p1 = sanitize(state.players?.p1?.name)
+    const p2 = sanitize(state.players?.p2?.name)
+    let resultToken: string
+    if (!state.ended) resultToken = 'INPROGRESS'
+    else if (!state.winner) resultToken = 'TIE'
+    else resultToken = `WIN_${sanitize(state.winner)}`
+    const prefix = state.mySide ? '' : 'SPEC_'
+    const base   = `${roomid}_${prefix}${p1}_vs_${p2}_${resultToken}_${Date.now()}`
+
+    const rawPath  = join(LOGS_DIR, `${base}.raw.txt`)
+    const richPath = join(LOGS_DIR, `${base}.txt`)
+
+    const raw  = rawFrames.join('\n')
+    writeFileSync(rawPath, raw)
+    const rich = generateBattleLog(state, rawFrames, movesData, TIMEZONE)
+    writeFileSync(richPath, rich)
+
+    wlog.info(`wrote ${richPath} (${rich.length} B) + ${base}.raw.txt (${raw.length} B)`)
+  } catch (e: any) {
+    wlog.error(`writeLog failed for ${roomid}: ${e?.stack}`)
+  }
+}
+
+function flushAllRooms(reason: string): void {
+  if (rooms.size === 0) return
+  wlog.warn(`flushing ${rooms.size} open room(s) on ${reason}`)
+  for (const [roomid, entry] of rooms) {
+    try { writeLog(roomid, entry.tracker.state, entry.rawFrames) }
+    catch (e: any) { wlog.error(`flushAllRooms failed for ${roomid}: ${e?.stack}`) }
+  }
+  rooms.clear()
+}
+
+function sweepStaleRooms(): void {
+  const now = Date.now()
+  for (const [roomid, entry] of rooms) {
+    if (now - entry.lastSeen > STALE_ROOM_MS) {
+      wlog.warn(`evicting stale room ${roomid} (idle ${Math.round((now - entry.lastSeen) / 1000)}s, turn=${entry.tracker.state.turn})`)
+      try { writeLog(roomid, entry.tracker.state, entry.rawFrames) }
+      catch (e: any) { wlog.error(`stale flush failed for ${roomid}: ${e?.stack}`) }
+      rooms.delete(roomid)
+    }
+  }
+}
+
+function handleFrame(frameData: string): void {
+  if (!BattleTracker) return  // libs not loaded yet (shouldn't happen in normal flow)
+  const roomid = roomidOf(frameData)
+  if (!roomid) return
+
+  let entry = rooms.get(roomid)
+  if (!entry) {
+    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now() }
+    rooms.set(roomid, entry)
+    log.info(`room opened: ${roomid}`)
+  }
+  entry.lastSeen = Date.now()
+  entry.tracker.feed(frameData)
+  entry.rawFrames.push(frameData)
+
+  if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {
+    wlog.warn(`room ${roomid} exceeded ${MAX_FRAMES_PER_ROOM} frames — flushing + evicting`)
+    writeLog(roomid, entry.tracker.state, entry.rawFrames)
+    rooms.delete(roomid)
+    return
+  }
+
+  const st = entry.tracker.state
+  log.debug(`frame ${roomid} turn=${st.turn} ended=${st.ended} bytes=${frameData.length}`)
+
+  const hasWin    = /\|win\|/.test(frameData)
+  const hasTie    = /\|tie\|/.test(frameData)
+  const hasDeinit = /\|deinit/.test(frameData)
+  let reason: string | null = null
+  if (hasWin)               reason = 'win'
+  else if (hasTie)          reason = 'tie'
+  else if (hasDeinit && st.turn >= 1) reason = 'deinit'
+
+  if (reason) {
+    log.info(`flushing ${roomid} (reason=${reason}, turn=${st.turn})`)
+    writeLog(roomid, st, entry.rawFrames)
+    rooms.delete(roomid)
+  }
+}
+
+// ── IPC: header actions ───────────────────────────────────────────────────────
 ipcMain.on('open-external', (_event, url: string) => {
-  // Only http(s) — never let the renderer hand shell.openExternal an arbitrary scheme.
   const target = typeof url === 'string' && /^https?:\/\//.test(url) ? url : REPO_URL
   shell.openExternal(target)
 })
 
 ipcMain.on('open-logs', () => {
-  // Falls back to the repo root if no battle has been logged yet (showdown-ui doesn't write logs;
-  // the folder only appears once the main app has run).
   shell.openPath(existsSync(LOGS_DIR) ? LOGS_DIR : REPO_ROOT)
 })
 
@@ -26,9 +219,9 @@ ipcMain.on('open-logs', () => {
 // WebSocket can emit the once-only |init|/|request| frames before that. Without a buffer
 // those frames are dropped forever → the helper sits on "Waiting…" for the whole battle.
 // We buffer per room (mirroring the extension's background.js) and replay on get-buffer.
-const MAX_FRAMES = 2000 // per room
-const MAX_ROOMS  = 6    // evict the oldest room beyond this
-const buffers = new Map<string, string[]>() // roomid → raw frame strings, insertion-ordered
+const MAX_FRAMES = 2000  // per room (display buffer — log writer uses its own rooms map above)
+const MAX_ROOMS  = 6     // evict the oldest room beyond this
+const buffers = new Map<string, string[]>()  // roomid → raw frame strings, insertion-ordered
 
 function roomOf(frame: string): string | null {
   const first = frame.split('\n', 1)[0]
@@ -52,42 +245,35 @@ function bufferFrame(data: string): void {
   if (buf.length > MAX_FRAMES) buf.shift()
 }
 
-// ── IPC: relay tapped PS frames to the helper renderer ───────────────────
-// The PS view's ps.js preload taps the WebSocket and sends each frame here; we
-// forward it to the helper window, which owns the BattleTracker + rendering
-// (mirroring how the Chrome extension's panel.js consumes frames in its iframe).
+// ── IPC: relay tapped PS frames to the helper renderer ───────────────────────
 ipcMain.on('ps-frame', (_event, payload: { data: string }) => {
   if (typeof payload?.data !== 'string') return
   bufferFrame(payload.data)
-  // If the helper window isn't ready to receive yet, the live send is a no-op — but the buffer
-  // above still captured the frame, so the renderer's get-buffer replay on mount recovers it.
+  // Drive the log writer (same contract as app/main.js C5 path).
+  try { handleFrame(payload.data) }
+  catch (e: any) { log.error(`handleFrame error: ${e?.stack}`) }
+
   if (!mainWindow || mainWindow.webContents.isLoading()) {
     const room = roomOf(payload.data)
-    if (room) console.log('[PSH ui-main] frame for ' + room + ' arrived before renderer ready — buffered (live send skipped)')
+    if (room) log.debug(`frame for ${room} arrived before renderer ready — buffered (live send skipped)`)
   }
   mainWindow?.webContents.send('ps-frame', payload)
 })
 
-// ── IPC: replay buffered frames for the most-recently-active room ─────────
-// Called by the renderer on mount so a battle already in progress (or whose init frames
-// preceded mount) is reconstructed from the buffer. BattleTracker.feed()'s auto-reset keeps
-// state correct since we return a single room's frames.
+// ── IPC: replay buffered frames for the most-recently-active room ─────────────
 ipcMain.handle('get-buffer', () => {
-  const rooms = [...buffers.keys()]
-  const room = rooms[rooms.length - 1] || null
-  const frames = (room && buffers.get(room)) || []
-  console.log('[PSH ui-main] get-buffer room=' + room + ' → ' + frames.length + ' frames (rooms=[' + rooms.join(', ') + '])')
+  const roomList = [...buffers.keys()]
+  const room     = roomList[roomList.length - 1] || null
+  const frames   = (room && buffers.get(room)) || []
+  log.info(`get-buffer room=${room} → ${frames.length} frames`)
   return { frames, room }
 })
 
-// ── windows ───────────────────────────────────────────────────────────────
+// ── windows ───────────────────────────────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null
 let psView:     WebContentsView | null = null
 let isDragging  = false
 
-// The renderer measures the left "game" region and reports its rect here; we
-// position the embedded PS client to fill exactly that area, left of the helper.
-// No gate on isDragging — we want the psView to follow live during a drag.
 ipcMain.on('set-game-bounds', (_event, rect: { x: number; y: number; width: number; height: number }) => {
   if (!psView) return
   psView.setBounds({
@@ -98,10 +284,6 @@ ipcMain.on('set-game-bounds', (_event, rect: { x: number; y: number; width: numb
   })
 })
 
-// Drag relay: instead of hiding the PS view (which blanks the screen), we ask
-// the psView preload to forward its mousemove/mouseup to main, which relays
-// position updates to the renderer so the resize continues while the view stays
-// visible. The renderer's own document listeners cover the helper-panel area.
 ipcMain.on('begin-resize', () => {
   isDragging = true
   psView?.webContents.send('start-drag-relay')
@@ -124,7 +306,7 @@ ipcMain.on('ps-drag-end', () => {
   mainWindow?.webContents.send('resize-drag-end')
 })
 
-// ── ad / analytics block (live psView only) ───────────────────────────────
+// ── ad / analytics block (live psView only) ───────────────────────────────────
 // psView wraps the LIVE play.pokemonshowdown.com client (partition 'persist:showdown-ui'), which
 // loads Google ad/analytics + the Playwire video-ad stack. PS is MIT, so blocking is permitted; we
 // cancel at the session layer so the ad partners are never contacted (no PII leak). Keep this list
@@ -234,9 +416,6 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Embed the live PS client as a child view overlaying the left region.
-  // Same webPreferences proven in M5 — contextIsolation:false so the ps.js
-  // preload can install the WebSocket tap in the page's main world.
   psView = new WebContentsView({
     webPreferences: {
       preload:          join(__dirname, '../preload/ps.js'),
@@ -246,15 +425,13 @@ function createWindow(): void {
       partition:        'persist:showdown-ui',
     },
   })
-  // Block ads/analytics on the SAME session the psView uses (the partition, not defaultSession),
-  // before its first loadURL. Cosmetic CSS collapses any slot that slips through, re-applied per nav.
   installAdBlock(session.fromPartition('persist:showdown-ui'))
   psView.webContents.on('did-finish-load', () => {
     psView?.webContents.insertCSS(AD_COLLAPSE_CSS).catch(() => {})
   })
 
   mainWindow.contentView.addChildView(psView)
-  psView.setBounds({ x: 0, y: 0, width: 0, height: 0 }) // until renderer reports
+  psView.setBounds({ x: 0, y: 0, width: 0, height: 0 })
   psView.webContents.loadURL('https://play.pokemonshowdown.com')
 
   mainWindow.on('closed', () => {
@@ -263,15 +440,51 @@ function createWindow(): void {
   })
 }
 
-// ── lifecycle ─────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+// ── lifecycle ─────────────────────────────────────────────────────────────────
+
+// Single-instance lock: bring the existing window to front if a second instance is launched.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
+})
+
+app.whenReady().then(async () => {
+  log.info(`showdown-ui starting — electron=${process.versions.electron} node=${process.versions.node}`)
+  log.info(`REPO_ROOT=${REPO_ROOT} PS_LOG_LEVEL=${process.env['PS_LOG_LEVEL'] || 'INFO'} timezone=${TIMEZONE}`)
+
+  await loadHelperLibs()
+  loadMovesData()
+
   createWindow()
+
+  // Periodic safety sweep: evict rooms that went idle without an end frame (saved as INPROGRESS).
+  // unref() so the timer never keeps the process alive on its own.
+  setInterval(sweepStaleRooms, SWEEP_INTERVAL_MS).unref()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Single-window app: closing the window quits, including on macOS.
-app.on('window-all-closed', () => {
-  app.quit()
+// Flush in-flight battles on any shutdown path before the process exits.
+app.on('before-quit',       () => flushAllRooms('before-quit'))
+app.on('window-all-closed', () => { flushAllRooms('window-all-closed'); app.quit() })
+
+// Crash resilience: save whatever battles are open before the renderer tears down.
+app.on('render-process-gone', (_e, _wc, details) => {
+  log.error(`render-process-gone: reason=${details?.reason}`)
+  flushAllRooms('render-process-gone')
+})
+
+// Last-resort: flush on an otherwise-fatal error, then exit.
+process.on('uncaughtException', (err) => {
+  log.error(`uncaughtException: ${err?.stack}`)
+  flushAllRooms('uncaughtException')
+  app.exit(1)
 })

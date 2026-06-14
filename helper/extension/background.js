@@ -92,6 +92,11 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 			const room = msg.room || roomOrder[roomOrder.length - 1];
 			const frames = (room && buffers[room]) || [];
 			console.log('[PSH bg] get-buffer room=' + room + ' → ' + frames.length + ' frames');
+			// A zero-frame reply is the blank-panel smoking gun: log what rooms we DO have so we can
+			// tell "no battle started yet" (empty roomOrder) from "wrong room requested" (mismatch).
+			if (!frames.length) {
+				console.log('[PSH bg] get-buffer EMPTY — requested=' + (msg.room || '(latest)') + ' roomOrder=[' + roomOrder.join(', ') + ']');
+			}
 			sendResponse({ frames, room });
 		})();
 		return true; // async sendResponse
