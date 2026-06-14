@@ -86,8 +86,10 @@ body {
 .stat { display: grid; grid-template-columns: 30px 1fr 52px; align-items: center; gap: 6px; }
 .stat-l { color: var(--muted); font-size: 11px; }
 .stat-v { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; white-space: nowrap; }
-.stat-bar { height: 7px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.stat-bar { height: 7px; background: var(--panel2); border-radius: 4px; overflow: hidden; display: flex; }
 .stat-bar i { display: block; height: 100%; }
+/* Range "fuzzy tip": the lo→hi uncertainty segment layered after the solid 0→lo fill. */
+.stat-bar u { display: block; height: 100%; opacity: 0.4; }
 
 .row { margin: 4px 0; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
 .row .k { color: var(--muted); font-size: 11px; min-width: 96px; }

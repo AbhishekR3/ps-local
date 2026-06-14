@@ -28,6 +28,10 @@ npm run setup:ui         # install showdown-ui deps (first-time setup)
 npm start                # launch showdown-ui — wraps live play.pokemonshowdown.com
 npm run build:ui         # production build of showdown-ui
 
+# Packaging (downloadable installers) — run from showdown-ui/:
+cd showdown-ui && npm run dist        # build a packaged installer for the current OS (dmg on macOS)
+cd showdown-ui && npm run dist:linux  # build the Linux AppImage
+
 npm test                 # helper unit tests (= cd helper && node --test)
 cd helper && node --test test/parser.test.js   # run a single test file
 npm run apply-overlay    # write overlay/*.js onto the gitignored vendor config/config.js targets
@@ -189,6 +193,15 @@ feature parity for all official-mode functionality:
   must declare main/preload/renderer entries explicitly. The renderer needs `server.fs.allow` widened to
   the repo root (it imports from `../../../helper/`), and `index.html` must use a **relative** `./src/…`
   script src. `tsconfig.web.json` sets `allowJs` to import the helper's `.js` libs.
+- **Packaging (`showdown-ui/electron-builder.yml`, `npm run dist`)**: produces downloadable installers
+  (`productName: Pokemon Showdown Battle UI`, dmg on macOS / AppImage on Linux). In a **packaged** app
+  `__dirname` is inside the asar, so `index.ts` branches on `app.isPackaged`: read-only data
+  (`moves.json`) comes from `process.resourcesPath` (shipped via `extraResources`), and writable state
+  (logs + `config.json`) goes to `~/Documents/ps-local/`. In dev both collapse to the repo root, so the
+  dev path is unchanged. The parser/exporter libs are **statically imported** (hence bundled into
+  `out/main/index.js`) rather than dynamically `import()`ed — required so they survive packaging.
+  macOS builds are **unsigned** (first launch: right-click → Open, or `xattr -dr com.apple.quarantine`).
+  Full phase status: [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md).
 - **Intentional gaps vs `app/`** (by design, not bugs):
   - No local-mode server / static server / testclient auto-login — official mode only.
   - No `PS_SYNTHETIC=1` headless fixture-feed for CI (only `app/` has this).

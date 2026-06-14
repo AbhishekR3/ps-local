@@ -1,11 +1,19 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, shell, session } from 'electron'
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'fs'
-import { pathToFileURL } from 'url'
+import { BattleTracker } from '../../../helper/extension/lib/parser.js'
+import { generateBattleLog } from '../../../helper/extension/lib/exporter.js'
 
-// Repo root relative to the built main process (out/main → out → showdown-ui → repo root).
-const REPO_ROOT = join(__dirname, '..', '..', '..')
-const LOGS_DIR  = join(REPO_ROOT, 'logs', 'battle_info')
+// Path bases differ between dev (run from the repo) and a packaged app (__dirname is inside the asar).
+//   DATA_DIR  — base for bundled read-only data (moves.json). Packaged: process.resourcesPath, where
+//               electron-builder's extraResources lands the helper data outside the asar.
+//   USER_ROOT — base for user-writable state (config.json + logs/). Packaged: ~/Documents/ps-local/
+//               so logs survive app updates and aren't trapped inside the read-only bundle.
+// In dev both collapse to the repo root, so the dev path is byte-for-byte unchanged.
+const REPO_ROOT = join(__dirname, '..', '..', '..')                 // dev only (out/main → repo root)
+const DATA_DIR  = app.isPackaged ? process.resourcesPath : REPO_ROOT
+const USER_ROOT = app.isPackaged ? join(app.getPath('documents'), 'ps-local') : REPO_ROOT
+const LOGS_DIR  = join(USER_ROOT, 'logs', 'battle_info')
 const REPO_URL  = 'https://github.com/AbhishekR3/ps-local'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -16,7 +24,7 @@ let _configWarning: string | null = null
 function loadConfig(): Config {
   const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
   try {
-    return { ...defaults, ...JSON.parse(readFileSync(join(REPO_ROOT, 'config.json'), 'utf8')) }
+    return { ...defaults, ...JSON.parse(readFileSync(join(USER_ROOT, 'config.json'), 'utf8')) }
   } catch (e: any) {
     if (e.code !== 'ENOENT') _configWarning = `config.json invalid (${e.message}) — using defaults`
     return defaults
@@ -34,9 +42,9 @@ const LOG_THRESHOLD = LOG_LEVELS[(process.env['PS_LOG_LEVEL'] || 'INFO').toUpper
 let _logFile: string | null = null
 function logFile(): string {
   if (_logFile) return _logFile
-  mkdirSync(join(REPO_ROOT, 'logs', 'debug'), { recursive: true })
+  mkdirSync(join(USER_ROOT, 'logs', 'debug'), { recursive: true })
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
-  _logFile = join(REPO_ROOT, 'logs', 'debug', `showdown-ui-${ts}.log`)
+  _logFile = join(USER_ROOT, 'logs', 'debug', `showdown-ui-${ts}.log`)
   return _logFile
 }
 
@@ -61,21 +69,11 @@ const wlog = createLogger('ui-wlog')
 
 if (_configWarning) log.warn(_configWarning)
 
-// ── ESM helper libs (loaded once at ready) ────────────────────────────────────
-let BattleTracker: any = null
-let generateBattleLog: ((state: any, rawFrames: string[], movesData: any, tz: string) => string) | null = null
+// ── Move metadata (read once at ready; optional — rich logs degrade to bare ids without it) ──
 let movesData: Record<string, any> = {}
 
-async function loadHelperLibs(): Promise<void> {
-  const parser   = await import(pathToFileURL(join(REPO_ROOT, 'helper', 'extension', 'lib', 'parser.js')).href)
-  const exporter = await import(pathToFileURL(join(REPO_ROOT, 'helper', 'extension', 'lib', 'exporter.js')).href)
-  BattleTracker    = parser.BattleTracker
-  generateBattleLog = exporter.generateBattleLog
-  log.info('helper libs loaded (parser + exporter)')
-}
-
 function loadMovesData(): void {
-  const p = join(REPO_ROOT, 'helper', 'extension', 'data', 'moves.json')
+  const p = join(DATA_DIR, 'helper', 'extension', 'data', 'moves.json')
   try {
     movesData = JSON.parse(readFileSync(p, 'utf8'))
     log.info(`movesData loaded: ${Object.keys(movesData).length} moves`)
@@ -110,10 +108,6 @@ function sanitize(name: string | undefined): string {
 function writeLog(roomid: string, state: any, rawFrames: string[]): void {
   if (!config.saveLogs) {
     wlog.debug(`saveLogs=false — skipping log write for ${roomid} (turn=${state.turn})`)
-    return
-  }
-  if (!generateBattleLog) {
-    wlog.warn(`generateBattleLog not loaded yet — skipping write for ${roomid}`)
     return
   }
   try {
@@ -165,7 +159,6 @@ function sweepStaleRooms(): void {
 }
 
 function handleFrame(frameData: string): void {
-  if (!BattleTracker) return  // libs not loaded yet (shouldn't happen in normal flow)
   const roomid = roomidOf(frameData)
   if (!roomid) return
 
@@ -397,8 +390,14 @@ function installAdBlock(targetSession: Electron.Session): void {
 }
 
 function createWindow(): void {
+  // Open at the full size of the screen's work area (menu bar / dock excluded) as an ordinary,
+  // movable window — not true fullscreen (no separate Space / hidden chrome on macOS).
+  const { workArea } = screen.getPrimaryDisplay()
   mainWindow = new BrowserWindow({
-    fullscreen: true,
+    x:      workArea.x,
+    y:      workArea.y,
+    width:  workArea.width,
+    height: workArea.height,
     backgroundColor: '#1a1a2e',
     title: 'Pokemon Showdown Battle UI',
     webPreferences: {
@@ -457,7 +456,6 @@ app.whenReady().then(async () => {
   log.info(`showdown-ui starting — electron=${process.versions.electron} node=${process.versions.node}`)
   log.info(`REPO_ROOT=${REPO_ROOT} PS_LOG_LEVEL=${process.env['PS_LOG_LEVEL'] || 'INFO'} timezone=${TIMEZONE}`)
 
-  await loadHelperLibs()
   loadMovesData()
 
   createWindow()

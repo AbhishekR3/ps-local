@@ -77,17 +77,20 @@ function statBar(label: string, value: number, max = 200, display: string | null
     + `<span class="stat-v">${display ?? value}</span></div>`
 }
 
-// Like statBar but draws a band spanning [lo, hi] of `max` — used for opponents, whose stats are
-// only known to a guaranteed range. Label text shows "lo–hi" (or a single number when lo === hi).
+// Like statBar but the value is only known to a guaranteed range [lo, hi] (opponents). Reads the same
+// as statBar — a solid fill from 0 — so the bar length still encodes magnitude. The lo→hi uncertainty
+// is a lighter translucent segment layered on the end (the "fuzzy tip"); when lo === hi it's just a
+// solid bar, no detached sliver. Label text shows "lo–hi" (or a single number when lo === hi).
 function statRangeBar(label: string, lo: number, hi: number, max = 200): string {
   const cap = max * 0.75
   const loPct = Math.min(100, Math.round((lo / max) * 100))
   const hiPct = Math.min(100, Math.round((hi / max) * 100))
-  const width = Math.max(hiPct - loPct, 2) // keep a visible sliver when lo === hi
+  const extPct = Math.max(hiPct - loPct, 0) // translucent extension width (0 when lo === hi)
   const hue = Math.round((Math.min(hi, cap) / cap) * 120) // red -> green, keyed on the high end
   const disp = lo === hi ? String(lo) : `${lo}–${hi}`
   return `<div class="stat"><span class="stat-l">${label}</span>`
-    + `<span class="stat-bar"><i style="margin-left:${loPct}%;width:${width}%;background:hsl(${hue} 70% 45%)"></i></span>`
+    + `<span class="stat-bar"><i style="width:${loPct}%;background:hsl(${hue} 70% 45%)"></i>`
+    + `<u style="width:${extPct}%;background:hsl(${hue} 70% 45%)"></u></span>`
     + `<span class="stat-v">${disp}</span></div>`
 }
 
