@@ -1,0 +1,59 @@
+name: build-electron
+
+# Builds the showdown-ui Electron app **from source** (electron-vite → out/) and runs an xvfb PS_SMOKE
+# launch against it — no electron-builder, no OS installer. A green badge means the raw Electron app
+# compiles and boots (with the WebSocket tap source shipped) on a clean checkout, which is the
+# run-from-terminal / hack-the-codebase distribution path (git clone + npm start), independent of the
+# per-OS .dmg/.exe/.AppImage installers that build-{linux,windows,macos} cover.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-electron.yml'
+  pull_request:
+    paths:
+      - 'showdown-ui/**'
+      - 'helper/extension/lib/**'
+      - 'helper/extension/data/moves.json'
+      - '.github/workflows/build-electron.yml'
+  workflow_dispatch:
+
+jobs:
+  build-electron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false # from-source build needs only helper/ + showdown-ui/, both in the main repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+
+      - name: Build from source (electron-vite → out/)
+        run: cd showdown-ui && npm run build
+
+      - name: Launch smoke (xvfb + PS_SMOKE — from-source app boots + tap source ships)
+        # `npx electron .` runs out/main/index.js (package.json "main") — the from-source app, no packaging.
+        # --no-sandbox: GitHub runners can't use the Chromium sandbox (no user namespaces).
+        # PS_SMOKE exits 1 if injected.js (the WebSocket tap) isn't shipped; we grep the line to be explicit.
+        run: |
+          cd showdown-ui
+          xvfb-run -a env PS_SMOKE=1 npx electron . --no-sandbox 2>&1 | tee smoke.log
+          grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # Convenience artifact: the built bundles. Not standalone-runnable on its own — it needs the
+          # repo's node_modules/electron — so the user-facing "from source" path stays git clone + npm start.
+          name: ps-local-electron-app
+          path: showdown-ui/out/**
+          if-no-files-found: error

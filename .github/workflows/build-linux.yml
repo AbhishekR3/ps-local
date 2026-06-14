@@ -17,6 +17,7 @@ on:
       - 'helper/extension/lib/**'
       - 'helper/extension/data/moves.json'
       - '.github/workflows/build-linux.yml'
+  workflow_dispatch: # allow on-demand runs (re-green the badge without a code push)
 
 jobs:
   build-linux:
@@ -47,14 +48,15 @@ jobs:
           [ -s "${files[0]}" ] || { echo 'AppImage is empty'; exit 1; }
 
       - name: Headless launch smoke (xvfb + PS_SMOKE)
-        # productName has spaces → the unpacked binary is "Pokemon Showdown Battle UI", not "ps-local".
-        # If electron-builder slugifies the linux-unpacked dir on a future bump, update the path here.
+        # The Linux unpacked binary is named after package.json `name` ("showdown-ui") — NOT the
+        # electron-builder productName ("Pokemon Showdown Battle UI"; that name is only used for the
+        # macOS .app and the Windows .exe). Verified against a real linux-unpacked build.
         # --no-sandbox: GitHub runners can't use the Chromium sandbox (no user namespaces).
         # PS_SMOKE exits 1 if injected.js (the WebSocket tap) isn't shipped — the regression that broke
         # battle-help in the packaged app. We also grep the "tap source ok" line to make it explicit.
         run: |
           xvfb-run -a env PS_SMOKE=1 \
-            "showdown-ui/dist/linux-unpacked/Pokemon Showdown Battle UI" --no-sandbox 2>&1 | tee smoke.log
+            "showdown-ui/dist/linux-unpacked/showdown-ui" --no-sandbox 2>&1 | tee smoke.log
           grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
 
       - uses: actions/upload-artifact@v4
