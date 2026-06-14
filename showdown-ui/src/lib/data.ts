@@ -24,7 +24,7 @@ async function loadJson(suffix: string): Promise<any> {
 export interface AbilityDesc { displayName: string; description: string }
 export interface Core { pokedex: any; moves: any; abilitiesDesc: Record<string, AbilityDesc> }
 export interface FormatData {
-  sets: any; items: any; abilities: any; teras: any; stats: any; movesFreq: any
+  sets: any; items: any; abilities: any; teras: any; movesFreq: any; stats: any
 }
 
 let _core: Core | null = null
@@ -43,14 +43,14 @@ export async function loadCore(): Promise<Core> {
 // Returns the per-format tables for a resolved sets key (e.g. "gen9").
 // Any table we don't ship for that key comes back null (lookup handles it).
 export async function loadFormat(key: string | null): Promise<FormatData> {
-  if (!key) return { sets: null, items: null, abilities: null, teras: null, stats: null, movesFreq: null }
-  const [sets, items, abilities, teras, stats, movesFreq] = await Promise.all([
+  if (!key) return { sets: null, items: null, abilities: null, teras: null, movesFreq: null, stats: null }
+  const [sets, items, abilities, teras, movesFreq, stats] = await Promise.all([
     loadJson(`/sets/${key}.json`),
     loadJson(`/items/${key}.json`),
     loadJson(`/abilities/${key}.json`),
     loadJson(`/tera/${key}.json`),
-    loadJson(`/stats/${key}.json`),
     loadJson(`/moves-freq/${key}.json`),
+    loadJson(`/stats/${key}.json`),
   ])
-  return { sets, items, abilities, teras, stats, movesFreq }
+  return { sets, items, abilities, teras, movesFreq, stats }
 }

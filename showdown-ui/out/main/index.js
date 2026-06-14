@@ -357,7 +357,7 @@ function createWindow() {
     width: 1800,
     height: 900,
     backgroundColor: "#1a1a2e",
-    title: "PS Local — Helper",
+    title: "Pokemon Showdown Battle UI",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,

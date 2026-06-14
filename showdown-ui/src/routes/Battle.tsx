@@ -21,7 +21,7 @@ const colHeader: CSSProperties = {
 export default function Battle({ helperOpen }: { helperOpen: boolean }) {
   const gameRef        = useRef<HTMLDivElement>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
-  const [helperWidth, setHelperWidth] = useState(380)
+  const [helperWidth, setHelperWidth] = useState(640)
 
   // Report the game container's rect to main so the embedded PS client (a
   // WebContentsView overlay) fills exactly this region, tracking resizes.

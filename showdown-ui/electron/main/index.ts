@@ -398,10 +398,9 @@ function installAdBlock(targetSession: Electron.Session): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1800,
-    height: 900,
+    fullscreen: true,
     backgroundColor: '#1a1a2e',
-    title: 'PS Local — Helper',
+    title: 'Pokemon Showdown Battle UI',
     webPreferences: {
       preload:          join(__dirname, '../preload/index.js'),
       contextIsolation: true,
