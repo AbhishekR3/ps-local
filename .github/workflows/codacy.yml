@@ -30,17 +30,36 @@ jobs:
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
 
-      # The CLI emits one SARIF run per tool (eslint, pmd, trivy, …) into a single file. Since
-      # GitHub's 2025-07-22 change, upload-sarif rejects multiple runs that share a category, so we
-      # stamp each run with a distinct automationDetails.id (the category) before uploading.
-      - name: Give each SARIF run a distinct category
+      # GitHub Code Scanning rejects SARIF with >20 runs in a single upload. Codacy can produce
+      # 26+ runs (one per tool × directory). We split the combined file into individual per-run
+      # files and upload each separately with a distinct category to stay under the limit.
+      - name: Split SARIF into one file per run
         run: |
-          jq 'reduce range(0; (.runs|length)) as $i
-                (.; .runs[$i].automationDetails.id =
-                  ("codacy/" + (.runs[$i].tool.driver.name // "tool") + "-" + ($i|tostring) + "/"))' \
-            results.sarif > results.fixed.sarif
+          mkdir -p sarif-runs
+          count=$(jq '.runs | length' results.sarif)
+          for i in $(seq 0 $((count - 1))); do
+            tool=$(jq -r ".runs[$i].tool.driver.name // \"tool\"" results.sarif)
+            jq --argjson i "$i" --arg cat "codacy/${tool}-${i}/" \
+              '{version, "$schema": .["$schema"],
+                runs: [.runs[$i] + {automationDetails: {id: $cat}}]}' \
+              results.sarif > "sarif-runs/run-${i}.sarif"
+          done
 
-      - name: Upload SARIF to GitHub code scanning
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357  # v3
-        with:
-          sarif_file: results.fixed.sarif
+      - name: Upload SARIF runs to GitHub code scanning
+        run: |
+          for f in sarif-runs/run-*.sarif; do
+            echo "Uploading $f …"
+            cat_id=$(jq -r '.runs[0].automationDetails.id // "codacy"' "$f")
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/code-scanning/sarifs \
+              -f commit_sha=${{ github.sha }} \
+              -f ref=${{ github.ref }} \
+              -f sarif="$(gzip -c "$f" | base64 -w0)" \
+              -f tool_name="codacy" \
+              -f category="$cat_id" || true   # non-fatal: advisory only
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
