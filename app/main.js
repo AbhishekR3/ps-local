@@ -29,6 +29,7 @@ let configWarning = null; // surfaced via the logger once it exists (loadConfig 
 function loadConfig(root) {
   const defaults = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true };
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     return { ...defaults, ...JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')) };
   } catch (e) {
     // Missing config.json is expected (first run / CI); only a malformed one is worth flagging.
@@ -143,6 +144,7 @@ function writeLog(roomid, state, rawFrames) {
     const richPath = path.join(LOGS_DIR, `${base}.txt`);
 
     const rich = generateBattleLog(state, rawFrames, movesData, TIMEZONE); // synchronous
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     fs.writeFileSync(richPath, rich);
 
     wlog.info(`wrote ${richPath} (${rich.length} B)`);
@@ -313,6 +315,7 @@ function startStatic() {
         httpd.warn(`403 traversal blocked: ${urlPath}`);
         res.writeHead(403); res.end('forbidden'); return;
       }
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       fs.stat(filePath, (err, st) => {
         if (err || !st.isFile()) {
           // Benign here: ../config/testclient-key.js and any missing data/*.js 404 cleanly.
@@ -321,6 +324,7 @@ function startStatic() {
         }
         httpd.debug(`200 ${req.method} ${urlPath}`);
         res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         fs.createReadStream(filePath).pipe(res);
       });
     });
@@ -652,6 +656,7 @@ app.on('child-process-gone', (_e, details) => {
 });
 
 // Last-resort: flush logs on an otherwise-fatal error, then exit (don't swallow indefinitely).
+// eslint-disable-next-line node/no-process-exit -- app.exit() is the Electron equivalent of process.exit() in this context
 process.on('uncaughtException', (err) => {
   log.error(`uncaughtException: ${err && err.stack}`);
   flushAllRooms('uncaughtException');

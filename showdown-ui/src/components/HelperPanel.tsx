@@ -112,7 +112,7 @@ export default function HelperPanel({ resyncSignal = 0 }: { resyncSignal?: numbe
       setPhase('waiting')
       window.psUI.getBuffer().then((buf) => {
         if (cancelled) return
-        if (buf.frames?.length) {
+        if (buf.frames.length) {
           for (const f of buf.frames) trackerRef.current.feed(f)
           console.log('[PSH ui] re-synced ' + buf.frames.length + ' buffered frames (room=' + buf.room + ')')
         }
@@ -155,7 +155,7 @@ export default function HelperPanel({ resyncSignal = 0 }: { resyncSignal?: numbe
     // emitted before this component mounted.
     window.psUI.onFrame(onFrame)
     window.psUI.getBuffer().then((buf) => {
-      if (cancelled || !buf.frames?.length) return
+      if (cancelled || !buf.frames.length) return
       for (const f of buf.frames) trackerRef.current.feed(f)
       console.log('[PSH ui] replayed ' + buf.frames.length + ' buffered frames on mount (room=' + buf.room + ')')
       scheduleRender()
@@ -164,7 +164,7 @@ export default function HelperPanel({ resyncSignal = 0 }: { resyncSignal?: numbe
     // Subscribe to transport health (tap / page / saveLogs) for the status line, and pull the current
     // snapshot in case the tap or page events fired before this listener registered.
     const unsubStatus = window.psUI.onStatus((s) => { if (!cancelled) setTransport(s) })
-    window.psUI.getStatus().then((s) => { if (!cancelled && s) setTransport(s) })
+    window.psUI.getStatus().then((s) => { if (!cancelled) setTransport(s) })
       .catch((e) => { console.warn('[PSH ui] getStatus failed', e) })
 
     // Load core data once, then render the waiting state and start taking frames. A failure here used

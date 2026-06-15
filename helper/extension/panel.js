@@ -59,7 +59,7 @@ function scheduleRender() {
 	renderQueued = true;
 	requestAnimationFrame(() => {
 		renderQueued = false;
-		ensureSets().then(render).catch((e) => console.warn('[PSH panel] render failed', e));
+		void ensureSets().then(render).catch((e) => console.warn('[PSH panel] render failed', e));
 	});
 }
 

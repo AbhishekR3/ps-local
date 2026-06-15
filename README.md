@@ -5,7 +5,10 @@
 
 An Electron app that **automatically saves a rich battle log for every Pokémon Showdown battle** — a raw protocol dump plus a human-readable breakdown — with zero per-battle action. Play on the live `play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel that shows the opponent's predicted sets, stats, abilities, and Tera types live.
 
-![Full window view — PS client (left) + helper panel (right)](docs/assets/battle-view.png)
+## See It In Action
+
+![UI Demo — Live battle with real-time helper predictions](docs/assets/UI-Demo.gif)
+
 
 ## Downloads
 

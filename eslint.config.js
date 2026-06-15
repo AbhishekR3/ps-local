@@ -72,6 +72,7 @@ module.exports = [
     plugins: {
       security: { rules: { 'detect-object-injection': noop, 'detect-non-literal-fs-filename': noop } },
       'no-unsanitized': { rules: { method: noop, property: noop } },
+      node: { rules: { 'no-process-exit': noop } },
     },
     // The stubbed rules never fire, so their disable directives read as "unused". They are NOT unused —
     // Codacy's real plugins consume them. Silence the unused-directive report so a clean local/CI run

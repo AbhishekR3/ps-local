@@ -44,6 +44,7 @@ function readTestclientKey() {
   const keyPath = process.env.PS_TESTCLIENT_KEY_PATH ||
     path.join(os.homedir(), 'Documents', 'pokemon-showdown-client', 'config', 'testclient-key.js');
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const text = fs.readFileSync(keyPath, 'utf8');
     const m = text.match(/POKEMON_SHOWDOWN_TESTCLIENT_KEY\s*=\s*['"]([^'"]+)['"]/);
     if (!m) { plog('WARN', `testclient key file has no POKEMON_SHOWDOWN_TESTCLIENT_KEY: ${keyPath}`); return null; }

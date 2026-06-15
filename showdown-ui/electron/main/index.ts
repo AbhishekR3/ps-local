@@ -27,6 +27,7 @@ let _configWarning: string | null = null
 function loadConfig(): Config {
   const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     return { ...defaults, ...JSON.parse(readFileSync(join(USER_ROOT, 'config.json'), 'utf8')) }
   } catch (e: unknown) {
     const err = e as NodeJS.ErrnoException
@@ -56,11 +57,13 @@ const MAX_DEBUG_LOGS = 10  // one debug log per launch is created; prune so only
 // (logs/battle_info/) are an intentional permanent archive and are left untouched.
 function pruneDebugLogs(dir: string): void {
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const logs = readdirSync(dir)
       .filter((f) => f.startsWith('showdown-ui-') && f.endsWith('.log'))
       .sort()  // ISO timestamp embedded in the name → lexical sort is chronological
     // Keep newest MAX_DEBUG_LOGS-1; this launch is about to add one, landing exactly at the cap.
     for (const f of logs.slice(0, Math.max(0, logs.length - (MAX_DEBUG_LOGS - 1)))) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       try { unlinkSync(join(dir, f)) } catch { /* best-effort */ }
     }
   } catch { /* best-effort — never let log housekeeping crash startup */ }
@@ -70,6 +73,7 @@ let _logFile: string | null = null
 function logFile(): string {
   if (_logFile) return _logFile
   const dir = join(USER_ROOT, 'logs', 'debug')
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   mkdirSync(dir, { recursive: true })
   pruneDebugLogs(dir)
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
@@ -78,9 +82,11 @@ function logFile(): string {
 }
 
 function logEmit(level: string, ns: string, msg: string): void {
+  // eslint-disable-next-line security/detect-object-injection
   if ((LOG_LEVELS[level] ?? 0) < LOG_THRESHOLD) return
   const line = `${new Date().toISOString()} [${level.padEnd(5)}] [${ns}] ${msg}`
   ;(level === 'WARN' || level === 'ERROR' ? console.error : console.log)(line)
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   try { appendFileSync(logFile(), line + '\n') } catch { /* best-effort */ }
 }
 
@@ -96,13 +102,14 @@ function createLogger(ns: string) {
 const log  = createLogger('ui-main')
 const wlog = createLogger('ui-wlog')
 
-if (_configWarning !== null) log.warn(_configWarning)
+if (_configWarning) log.warn(_configWarning)
 
 // Resolve config.iconPath → a nativeImage for the window/taskbar (Linux/Windows) and macOS Dock.
 // Tilde-expands ~; missing/unreadable files warn and fall back to the bundled icon.
 function resolveIcon(p: string | undefined): Electron.NativeImage | undefined {
   if (!p) return undefined
   const expanded = p.startsWith('~') ? join(homedir(), p.slice(1)) : p
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   if (!existsSync(expanded)) { log.warn(`iconPath not found: ${expanded} — using default icon`); return undefined }
   const img = nativeImage.createFromPath(expanded)
   if (img.isEmpty()) { log.warn(`iconPath unreadable as image: ${expanded} — using default icon`); return undefined }
@@ -115,6 +122,7 @@ let movesData: Record<string, unknown> = {}
 function loadMovesData(): void {
   const p = join(DATA_DIR, 'helper', 'extension', 'data', 'moves.json')
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     movesData = JSON.parse(readFileSync(p, 'utf8'))
     log.info(`movesData loaded: ${Object.keys(movesData).length} moves`)
   } catch (e: unknown) {
@@ -143,12 +151,14 @@ function writeLog(roomid: string, state: BattleState, rawFrames: string[]): void
     return
   }
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     mkdirSync(LOGS_DIR, { recursive: true })
 
     const base     = battleLogFilename(roomid, state, Date.now())
     const richPath = join(LOGS_DIR, `${base}.txt`)
 
     const rich = generateBattleLog(state, rawFrames, movesData, TIMEZONE)
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     writeFileSync(richPath, rich)
 
     wlog.info(`wrote ${richPath} (${rich.length} B)`)
@@ -246,7 +256,10 @@ function bufferFrame(data: string): void {
   if (!buf) {
     buf = []
     buffers.set(room, buf)
-    while (buffers.size > MAX_ROOMS) buffers.delete(buffers.keys().next().value!)
+    while (buffers.size > MAX_ROOMS) {
+      const oldest = buffers.keys().next().value
+      if (oldest !== undefined) buffers.delete(oldest)
+    }
   }
   buf.push(data)
   if (buf.length > MAX_FRAMES) buf.shift()
@@ -625,12 +638,13 @@ app.whenReady().then(async () => {
   if (process.env['PS_SMOKE']) {
     const tapPath = join(DATA_DIR, 'helper', 'extension', 'injected.js')
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       readFileSync(tapPath, 'utf8')
       log.info(`PS_SMOKE: tap source ok (${tapPath})`)
       log.info('PS_SMOKE: boot ok, exiting')
       app.exit(0)
-    } catch (e: any) {
-      log.error(`PS_SMOKE: tap source MISSING at ${tapPath} (${e?.message}) — battle-help would not work`)
+    } catch (e: unknown) {
+      log.error(`PS_SMOKE: tap source MISSING at ${tapPath} (${(e as Error).message}) — battle-help would not work`)
       app.exit(1)
     }
     return
@@ -656,6 +670,7 @@ app.on('render-process-gone', (_e, _wc, details) => {
 })
 
 // Last-resort: flush on an otherwise-fatal error, then exit.
+// eslint-disable-next-line node/no-process-exit -- app.exit() is the Electron equivalent of process.exit() in this context
 process.on('uncaughtException', (err) => {
   log.error(`uncaughtException: ${err.stack}`)
   flushAllRooms('uncaughtException')

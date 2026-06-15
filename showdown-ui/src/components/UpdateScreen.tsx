@@ -95,7 +95,7 @@ export default function UpdateScreen({ onDone }: { onDone: () => void }) {
   }
 
   function handleRollback() {
-    window.psUI.rollback().then(res => {
+    void window.psUI.rollback().then(res => {
       if (!res.success) {
         setPhase({ kind: 'error', message: 'Rollback failed — submodules may be in a mixed state. Check vendor/ manually.' })
       } else {
