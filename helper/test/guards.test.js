@@ -11,7 +11,9 @@ import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
-const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+// Normalize CRLF→LF: these guards parse source with \n-based anchors (e.g. indexOf('\n\n')), so a
+// Windows checkout with autocrlf would otherwise break them. Keeps the suite line-ending-stable on CI.
+const read = (p) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
 
 // ── A1: the ad-block list is hand-duplicated across the two Electron mains (CJS app/ vs ESM
 // showdown-ui — CLAUDE.md forbids a shared module). Assert the two pattern lists are identical. ──
