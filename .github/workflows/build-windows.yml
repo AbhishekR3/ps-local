@@ -40,13 +40,17 @@ jobs:
       - name: Build NSIS installer
         run: cd showdown-ui && npm run dist:win
 
-      - name: Assert installer artifact exists
+      - name: Assert installer artifact exists and is a real PE binary
         shell: pwsh
         run: |
           $files = Get-ChildItem showdown-ui/dist/*.exe -ErrorAction SilentlyContinue
           if (-not $files) { Write-Error 'No .exe produced'; exit 1 }
           $files | ForEach-Object { Write-Host $_.FullName $_.Length }
           if (($files | Where-Object { $_.Length -gt 0 }).Count -eq 0) { Write-Error 'installer is empty'; exit 1 }
+          # Beyond non-empty: confirm the first two bytes are the PE "MZ" magic, so a truncated or
+          # wrong-type file that still has a non-zero size can't pass as a valid installer.
+          $bytes = [System.IO.File]::ReadAllBytes($files[0].FullName)[0..1]
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error 'installer is not a PE (MZ) binary'; exit 1 }
 
       - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
         shell: pwsh

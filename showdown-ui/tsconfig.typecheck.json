@@ -1,0 +1,27 @@
+{
+  // Dedicated typecheck pass for `npm run typecheck` / CI — NOT used by the build (electron-vite
+  // drives that off tsconfig.node.json + tsconfig.web.json via the composite tsconfig.json root).
+  //
+  // Why a separate file: the build configs are `composite: true` solution projects, which (a) forbid
+  // `--noEmit` and (b) reject importing the helper's `.js` libs that live outside their `include` glob
+  // (TS6307). This config is non-composite, enables `allowJs`/`checkJs:false` so those shared `.js`
+  // libs resolve as untyped JS, and adds the DOM lib because the preloads (electron/preload/ps.ts)
+  // run in the renderer's DOM context. It covers BOTH the electron (node) and src (web) sources in one
+  // pass so a single `tsc -p` typechecks the whole app surface.
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true
+  },
+  "include": ["electron/**/*", "src/**/*", "electron.vite.config.*"]
+}

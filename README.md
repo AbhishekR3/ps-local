@@ -1,38 +1,31 @@
 # ps-local
 
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
-[![build-electron app](https://github.com/AbhishekR3/ps-local/actions/workflows/build-electron.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-electron.yml)
-[![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml)
-[![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml)
-[![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml)
-[![build-chromium-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/fe47edfc301e4964990f676c9a1c8125)](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 An Electron app that **automatically saves a rich battle log for every Pokémon Showdown battle** — a raw protocol dump plus a human-readable breakdown — with zero per-battle action. Play on the live `play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel that shows the opponent's predicted sets, stats, abilities, and Tera types live.
 
-![Battle helper panel](docs/assets/panel.png)
-
-<!-- Screenshots to capture:
-  1. docs/assets/panel.png     — helper panel mid-battle: predicted sets, stat bars, ability pills, Tera type
-  2. docs/assets/battle-view.png — full window showing the PS client (left) + helper panel (right)
-  3. docs/assets/log-sample.png  — a saved .txt battle log open in a text editor
--->
+![Full window view — PS client (left) + helper panel (right)](docs/assets/battle-view.png)
 
 ## Downloads
 
-| Type | Platform | How to get |
-|---|---|---|
-| **Run from source** | Linux / Windows / macOS | `git clone` + `npm start` (see [Quickstart](#quickstart)) |
-| **Chromium extension** | Chrome/Chromium (any OS) | CI artifacts → `build-chromium-extension` → download `ps-local-extension` → unzip → load unpacked |
-| **macOS** installer (`.dmg`) + portable (`.zip`) | macOS | CI artifacts → `build-macos` → download `ps-local-macos-dmg` |
-| **Windows** installer (`.exe`) + portable (`.exe`) | Windows | CI artifacts → `build-windows` → download `ps-local-windows-installer` |
-| **Linux** AppImage + portable (`.tar.gz`) | Linux | CI artifacts → `build-linux` → download `ps-local-linux-AppImage` |
+| OS | Minimum Requirements | Download | Status |
+|---|---|---|---|
+| **macOS** | macOS 10.13 High Sierra or later | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml) |
+| **Linux** | Ubuntu 18.04+ / glibc ≥ 2.17 | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml) |
+| **Windows** | Windows 10 or later | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml) |
+| **Chromium Extension** | Chrome / Chromium 88+ | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-chromium-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml) |
 
-> **macOS (unsigned).** The build isn't code-signed. After dragging to Applications, **right-click → Open** once, or run `xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"`.
+> **macOS — unsigned build.** After dragging to Applications, **right-click → Open** once, or run:
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/Pokemon Showdown Battle UI.app"
+> ```
 
-Installed builds save logs and read `config.json` from `~/Documents/ps-local/` (not the repo). See [docs/PACKAGING-PROGRESS.md](docs/PACKAGING-PROGRESS.md) for per-OS CI status.
+> **Chromium Extension.** Unzip the downloaded file, then go to `chrome://extensions`, enable **Developer mode**, and click **Load unpacked** — select the unzipped folder.
 
-## Quickstart
+Installed builds (macOS/Linux/Windows) save logs and read `config.json` from `~/Documents/ps-local/`.
+
+## Quickstart (run from source)
 
 **Prerequisites:**
 
@@ -48,54 +41,43 @@ npm run setup:ui    # install showdown-ui dependencies (one-time)
 npm start           # launch — connects to live play.pokemonshowdown.com
 ```
 
-Log in with your Pokémon Showdown account and play a battle. When it ends (`|win|`/`|tie|`, or you close the room past turn 1), two directories appear in `logs/`:
+Log in with your Pokémon Showdown account and play a battle. When it ends (or you close the room past turn 1), two directories appear under `logs/`:
 
-- `battle_info/` — rich human-readable battle log per battle
+- `battle_info/` — one `.txt` file per battle
 - `debug/` — structured per-session debug log
 
-## How battle logs are saved
+## Battle Logs
 
-For each finished battle, `logs/battle_info/` gets one `.txt` file:
+![Saved battle log in a text editor](docs/assets/log-sample.png)
+
+Each finished battle produces one file in `logs/battle_info/`:
 
 ```
-<roomid>_<p1>_vs_<p2>_WIN_<winner>_<timestamp>.txt
+<timestamp>_<roomid>_<p1>_vs_<p2>.txt
 ```
 
-Result tokens: `WIN_<winner>` · `TIE` · `INPROGRESS` (crash/disconnect). Spectated battles get a `SPEC_` prefix. The file has sections: battle summary, teams, field state, turn-by-turn log, and raw protocol. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md).
+Spectated battles get a `SPEC_` prefix between the roomid and the player names. The file contains six sections: battle summary, your team, opponent team, field state, turn-by-turn log, and raw protocol. See [docs/LOG-FORMAT.md](docs/LOG-FORMAT.md) for the full spec.
 
 ### Debug logging
 
-Every session appends structured logs to `logs/debug/showdown-ui-<ts>.log`. Set `PS_LOG_LEVEL=DEBUG` for per-frame detail (useful when no logs appear — see [Troubleshooting](#troubleshooting)).
+Every session appends structured logs to `logs/debug/showdown-ui-<ts>.log`. Set `PS_LOG_LEVEL=DEBUG` for per-frame detail — useful when no log files appear after a battle:
 
 ```bash
 PS_LOG_LEVEL=DEBUG npm start
 ```
 
-## Helper panel
+## Helper Panel
 
-![In-battle view](docs/assets/battle-view.png)
+![Helper panel — predicted sets, stat bars, ability pills, Tera type](docs/assets/panel.png)
 
 When a battle is open, the right-side panel shows the opponent's Pokémon with predicted sets, stats, abilities, and Tera types. It updates live as the battle progresses.
 
 - **Resizable** — drag the divider between the game view and the panel
 - **Spectator mode** — both players' cards render side by side when watching
 
-## Privacy
-
-- Battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. The tap only writes battles to `logs/battle_info/` on disk; nothing extra is uploaded.
-- Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus, ~50 prebid partners) are **cancelled at the Electron session layer** before they leave the machine.
-
-Electron's bundled Chromium ships without Google account/sync services.
-
-## Troubleshooting
-
-**No log files after a battle.** Open DevTools (Electron menu → View → Toggle Developer Tools) and confirm the tap is live: look for `[PSH inject] WebSocket created: … | tapped: true`, then `[PSH inject] battle frame #N` during play. If you see `tapped: false`, the sim socket URL didn't match the tap filter. `PS_LOG_LEVEL=DEBUG npm start` shows per-frame counts in `logs/debug/`.
-
-**Login issues.** Log in through the normal Pokémon Showdown UI in the left panel. Session persists across restarts via the `persist:showdown-ui` Electron session partition.
-
 ## Configuration
 
-Config file (`config.json` at repo root, gitignored — copy from `config.example.json`):
+Copy `config.example.json` to `config.json` at the repo root (gitignored):
 
 ```json
 {
@@ -106,11 +88,22 @@ Config file (`config.json` at repo root, gitignored — copy from `config.exampl
 }
 ```
 
-`iconPath` sets the live window/taskbar icon (Linux/Windows) and the macOS Dock icon. It does not affect the installer's baked icon. Falls back to the bundled icon when unset or unreadable.
+`iconPath` sets the live window/taskbar icon (Linux/Windows) and the macOS Dock icon. Falls back to the bundled icon when unset or unreadable.
 
 Environment variable overrides: `PS_LOG_LEVEL=DEBUG`, `PS_TIMEZONE=<iana>`.
 
-## Updating upstream
+## Privacy
+
+- Battle traffic and login go to `*.psim.us` / `play.pokemonshowdown.com` as on the normal site. The tap only writes battles to `logs/battle_info/` on disk — nothing extra is uploaded.
+- Third-party ad and analytics requests (Google, Microsoft/Bing, Venatus, ~50 prebid partners) are **cancelled at the Electron session layer** before they leave the machine.
+
+## Troubleshooting
+
+**No log files after a battle.** Open DevTools (Electron menu → View → Toggle Developer Tools) and check for `[PSH inject] WebSocket created: … | tapped: true`, then `[PSH inject] battle frame #N` during play. If you see `tapped: false`, the sim socket URL didn't match the tap filter. Run `PS_LOG_LEVEL=DEBUG npm start` and check `logs/debug/` for per-frame counts.
+
+**Login issues.** Log in through the normal Pokémon Showdown UI in the left panel. Session persists across restarts via the `persist:showdown-ui` Electron session partition.
+
+## Updating Upstream
 
 ps-local wraps two official Pokémon Showdown repositories as git submodules:
 
@@ -136,23 +129,23 @@ cd helper && node build-data.js
 
 ## Tests & CI
 
-| Command | What it runs | CI |
-|---|---|---|
-| `npm test` | Full helper suite (parser / exporter / golden / edge / guards / render) | `test.yml` — every push/PR |
-| `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors | `test.yml` — every push/PR |
-| `cd helper && node --test test/parser.test.js` | Single test file | — |
+| Command | What it runs |
+|---|---|
+| `npm test` | Full helper suite (parser / exporter / golden / edge / guards / render / logmeta) |
+| `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors |
+| `cd helper && node --test test/parser.test.js` | Single test file |
 
 If you intentionally change exporter formatting, refresh the golden: `node helper/test/golden.test.js --update`.
 
 Build CI runs on `showdown-ui/` or `helper/extension/` path changes:
 
-| CI workflow | What it builds |
-|---|---|
-| `build-electron` | From-source electron-vite build + `PS_SMOKE` launch smoke |
-| `build-linux` | Linux AppImage + tar.gz + xvfb `PS_SMOKE` launch |
-| `build-windows` | Windows NSIS installer + portable `.exe` |
-| `build-macos` | macOS `.dmg` + `.zip` (unsigned) |
-| `build-chromium-extension` | Extension zip + credential leak-assert |
+| CI workflow | What it builds | Status |
+|---|---|---|
+| `build-electron` | From-source electron-vite build + `PS_SMOKE` launch smoke | [![build-electron app](https://github.com/AbhishekR3/ps-local/actions/workflows/build-electron.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-electron.yml) |
+| `build-linux` | Linux AppImage + tar.gz + xvfb `PS_SMOKE` launch | [![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml) |
+| `build-windows` | Windows NSIS installer + portable `.exe` | [![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml) |
+| `build-macos` | macOS `.dmg` + `.zip` (unsigned) | [![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml) |
+| `build-chromium-extension` | Extension zip + credential leak-assert | [![build-chromium-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml) |
 
 [Codacy](https://app.codacy.com/gh/AbhishekR3/ps-local/dashboard) analyzes every push; `vendor/` and generated bundles are excluded.
 
@@ -170,7 +163,7 @@ showdown-ui/electron/main/index.ts
 
 The log writer (tap → parser → exporter → `logs/`) runs in the Electron main process. The React helper panel renders opponent breakdowns in the renderer. Both use the same shared pure libs from `helper/extension/lib/`.
 
-## Directory structure
+## Directory Structure
 
 ```
 showdown-ui/       Primary Electron app (React helper panel + live PS client)
@@ -211,5 +204,3 @@ Both projects are published under the MIT license. ps-local adds local logging a
 ## License
 
 [MIT](LICENSE) © Abhishek Ramesh. The wrapped Pokémon Showdown server and client are included only as git submodules under `vendor/` and remain under their own (MIT) licenses.
-
-![Saved battle log](docs/assets/log-sample.png)

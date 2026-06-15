@@ -39,13 +39,16 @@ jobs:
       - name: Build dmg (unsigned)
         run: cd showdown-ui && npm run dist:mac
 
-      - name: Assert dmg artifact exists
+      - name: Assert dmg artifact exists and is a valid disk image
         run: |
           shopt -s nullglob
           files=(showdown-ui/dist/*.dmg)
           if [ ${#files[@]} -eq 0 ]; then echo 'No .dmg produced'; exit 1; fi
           ls -la "${files[@]}"
           [ -s "${files[0]}" ] || { echo 'dmg is empty'; exit 1; }
+          # Beyond non-empty: hdiutil imageinfo only succeeds on a real, mountable disk image, so a
+          # truncated or corrupt .dmg that still has a non-zero size fails here.
+          hdiutil imageinfo "${files[0]}" >/dev/null || { echo 'dmg is not a valid disk image'; exit 1; }
 
       - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
         # The unpacked .app dir is arch-suffixed (mac-arm64 on Apple-Silicon runners), so glob for it.

@@ -28,7 +28,6 @@ declare global {
       checkUpdate: () => Promise<{ packaged?: boolean; upToDate?: boolean; ahead?: { ps: number; client: number }; error?: string }>
       applyUpdate: () => Promise<{ success: boolean; testOutput: string }>
       rollback: () => Promise<{ success: boolean }>
-      skipUpdate: () => void
       onUpdateProgress: (cb: (step: string) => void) => () => void
     }
   }

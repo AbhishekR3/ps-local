@@ -19,8 +19,8 @@ const STALL_MS = 5000  // frames arriving but nothing parsed within this window 
 const DEFAULT_STATUS: PsStatus = { tap: 'unknown', page: 'ok', saveLogs: true, logWrite: 'ok' }
 
 // Translate transport health + parse phase into the single status line shown above the panel. This
-// is the fix for the system's #1 weakness: every silent failure (dead tap, offline PS, broken data,
-// logging off) now has a visible, distinct message instead of an endless "Waiting…".
+// is the fix for the system's #1 weakness: every silent failure (dead tap, offline PS, broken data)
+// now has a visible, distinct message instead of an endless "Waiting…".
 type Tone = 'ok' | 'idle' | 'warn' | 'error'
 function deriveStatus(
   transport: PsStatus,
@@ -31,9 +31,8 @@ function deriveStatus(
   if (transport.tap === 'error')         return { text: 'Tap not active — no battle frames will arrive', tone: 'error', reload: false }
   if (transport.logWrite === 'error')    return { text: 'Battle log failed to save — check disk space / folder permissions', tone: 'error', reload: false }
   if (dataError)                         return { text: 'Battle data failed to load', tone: 'error', reload: false }
-  const loggingOff = transport.saveLogs === false
-  if (phase === 'connected') return { text: loggingOff ? 'Connected · logging OFF' : 'Connected', tone: loggingOff ? 'warn' : 'ok', reload: false }
-  return { text: loggingOff ? 'Waiting for a battle… · logging OFF' : 'Waiting for a battle…', tone: loggingOff ? 'warn' : 'idle', reload: false }
+  if (phase === 'connected') return { text: 'Connected', tone: 'ok', reload: false }
+  return { text: 'Waiting for a battle…', tone: 'idle', reload: false }
 }
 
 export default function HelperPanel({ resyncSignal = 0 }: { resyncSignal?: number }) {

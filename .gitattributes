@@ -1,0 +1,7 @@
+# The golden test asserts the exporter output (always LF) byte-for-byte against the checked-in
+# expected file. Without this, a Windows CI checkout (autocrlf) would rewrite these to CRLF and the
+# comparison would fail on the test matrix's Windows leg. Force LF for the fixtures, golden files, and
+# the sample logs they derive from so the suite is line-ending-stable across every OS.
+helper/test/fixtures/**  text eol=lf
+helper/test/golden/**    text eol=lf
+*.txt                    text eol=lf

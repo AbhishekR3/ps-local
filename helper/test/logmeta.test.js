@@ -25,23 +25,23 @@ test('sanitize strips filename-unsafe characters', () => {
 	assert.equal(sanitize(''), 'unknown');
 });
 
-test('battleLogFilename builds the win/tie/inprogress scheme with a deterministic ts', () => {
+test('battleLogFilename builds <ts>_<roomid>_<p1>_vs_<p2> with a deterministic ts', () => {
 	const base = { players: { p1: { name: 'You' }, p2: { name: 'Rival' } }, mySide: 'p1' };
 
 	assert.equal(
 		battleLogFilename('battle-gen9ou-1', { ...base, ended: true, winner: 'You' }, 1700),
-		'battle-gen9ou-1_You_vs_Rival_WIN_You_1700');
+		'1700_battle-gen9ou-1_You_vs_Rival');
 	assert.equal(
 		battleLogFilename('battle-gen9ou-1', { ...base, ended: true, winner: null }, 1700),
-		'battle-gen9ou-1_You_vs_Rival_TIE_1700');
+		'1700_battle-gen9ou-1_You_vs_Rival');
 	assert.equal(
 		battleLogFilename('battle-gen9ou-1', { ...base, ended: false }, 1700),
-		'battle-gen9ou-1_You_vs_Rival_INPROGRESS_1700');
+		'1700_battle-gen9ou-1_You_vs_Rival');
 });
 
 test('battleLogFilename uses the SPEC_ prefix when not a participant', () => {
 	const spec = { players: { p1: { name: 'A' }, p2: { name: 'B' } }, mySide: null, ended: true, winner: 'A' };
-	assert.equal(battleLogFilename('battle-gen9ou-2', spec, 42), 'battle-gen9ou-2_SPEC_A_vs_B_WIN_A_42');
+	assert.equal(battleLogFilename('battle-gen9ou-2', spec, 42), '42_battle-gen9ou-2_SPEC_A_vs_B');
 });
 
 test('battleEndReason detects win/deinit and ignores premature deinit', () => {

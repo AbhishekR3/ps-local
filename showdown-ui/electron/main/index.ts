@@ -125,7 +125,9 @@ function loadMovesData(): void {
 
 // ── Battle log writer (C5) ────────────────────────────────────────────────────
 // Minimal shape of BattleTracker.state needed by this file. The full type lives in parser.js (JS).
-interface BattleState { turn: number; mySide: string | null; formatId?: string; [k: string]: unknown }
+// formatId is null on a freshly reset tracker state (parser.js seeds it null), then a string once the
+// |player|/format frame lands — so the type must admit null, not just string|undefined.
+interface BattleState { turn: number; mySide: string | null; formatId?: string | null; [k: string]: unknown }
 // Per-room accumulators: roomid → { tracker, rawFrames, lastSeen }.
 // One tracker per room: feed() auto-resets on a new roomid, so a shared tracker would thrash.
 interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number }
@@ -339,38 +341,36 @@ ipcMain.on('reload-ps', () => {
 })
 
 // ── Auto-update helpers ───────────────────────────────────────────────────────
+// Shared spawn-to-promise: collects stdout, rejects on non-zero exit, supports optional kill timeout.
+function spawnCollect(args: string[], cwd: string, opts: { timeout?: number; onData?: (s: string) => void } = {}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let out = ''
+    const child = spawn(args[0], args.slice(1), { cwd })
+    const t = opts.timeout ? setTimeout(() => { child.kill(); reject(new Error(`timed out: ${args[0]}`)) }, opts.timeout) : null
+    const pipe = (d: Buffer) => { const s = d.toString(); out += s; opts.onData?.(s) }
+    child.stdout.on('data', pipe)
+    child.stderr?.on('data', pipe)
+    child.on('close', code => {
+      if (t) clearTimeout(t)
+      code === 0 ? resolve(out) : reject(new Error(`exit ${code}: ${args[0]}`))
+    })
+  })
+}
+
 // Check how many commits each submodule is behind its upstream remote.
 // git fetch has a 10 s timeout; if either fetch times out the whole check throws.
 async function checkUpstreamAhead(): Promise<{ ps: number; client: number }> {
-  const FETCH_TIMEOUT = 10_000
-
-  function fetchSub(cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const child = spawn('git', ['fetch', '--quiet'], { cwd })
-      const t = setTimeout(() => { child.kill(); reject(new Error('git fetch timed out')) }, FETCH_TIMEOUT)
-      child.on('close', code => {
-        clearTimeout(t)
-        code === 0 ? resolve() : reject(new Error(`git fetch exit ${code}`))
-      })
-    })
-  }
-
-  function countAhead(cwd: string): Promise<number> {
-    return new Promise((resolve, reject) => {
-      let out = ''
-      const child = spawn('git', ['rev-list', 'HEAD..@{u}', '--count'], { cwd })
-      child.stdout.on('data', (d: Buffer) => { out += d.toString() })
-      child.on('close', code =>
-        code === 0 ? resolve(parseInt(out.trim(), 10) || 0) : reject(new Error(`rev-list exit ${code}`))
-      )
-    })
-  }
-
   const psDir  = join(REPO_ROOT, 'vendor', 'pokemon-showdown')
   const cliDir = join(REPO_ROOT, 'vendor', 'pokemon-showdown-client')
-  await Promise.all([fetchSub(psDir), fetchSub(cliDir)])
-  const [ps, client] = await Promise.all([countAhead(psDir), countAhead(cliDir)])
-  return { ps, client }
+  await Promise.all([
+    spawnCollect(['git', 'fetch', '--quiet'], psDir,  { timeout: 10_000 }),
+    spawnCollect(['git', 'fetch', '--quiet'], cliDir, { timeout: 10_000 }),
+  ])
+  const [psOut, cliOut] = await Promise.all([
+    spawnCollect(['git', 'rev-list', 'HEAD..@{u}', '--count'], psDir),
+    spawnCollect(['git', 'rev-list', 'HEAD..@{u}', '--count'], cliDir),
+  ])
+  return { ps: parseInt(psOut.trim(), 10) || 0, client: parseInt(cliOut.trim(), 10) || 0 }
 }
 
 // SHAs captured before an apply so rollback() can restore them.
@@ -379,7 +379,8 @@ let _preUpdateShas: { ps: string; client: string } | null = null
 function captureShas(): { ps: string; client: string } {
   function sha(cwd: string): string {
     const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' })
-    return (r.stdout || '').trim()
+    if (r.error || r.status !== 0) throw new Error(`git rev-parse failed in ${cwd}: ${r.error?.message ?? r.stderr}`)
+    return r.stdout.trim()
   }
   return {
     ps:     sha(join(REPO_ROOT, 'vendor', 'pokemon-showdown')),
@@ -388,22 +389,25 @@ function captureShas(): { ps: string; client: string } {
 }
 
 async function applyUpdate(onProgress: (step: string) => void): Promise<{ success: boolean; testOutput: string }> {
-  _preUpdateShas = captureShas()
-  return new Promise(resolve => {
-    let out = ''
+  let out = ''
+  const collect = (s: string) => { out += s; onProgress(s) }
+  // captureShas inside the try so a git failure returns success:false instead of propagating as an
+  // unhandled rejection (which would leave _preUpdateShas null and make rollback impossible).
+  try {
+    _preUpdateShas = captureShas()
     // Same flags as upstream-canary.yml — avoids "refusing to merge unrelated histories" on shallow clones.
-    const child = spawn('git', ['submodule', 'update', '--remote', '--force', '--recursive'], { cwd: REPO_ROOT })
-    child.stdout.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
-    child.stderr.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
-    child.on('close', code => {
-      if (code !== 0) return resolve({ success: false, testOutput: out })
-      onProgress('Running npm test…\n')
-      const test = spawn('node', ['--test'], { cwd: join(REPO_ROOT, 'helper') })
-      test.stdout.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
-      test.stderr.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
-      test.on('close', tcode => resolve({ success: tcode === 0, testOutput: out }))
-    })
-  })
+    await spawnCollect(['git', 'submodule', 'update', '--remote', '--force', '--recursive'], REPO_ROOT, { onData: collect })
+  } catch (e: unknown) {
+    onProgress(`\nUpdate failed: ${e instanceof Error ? e.message : String(e)}\n`)
+    return { success: false, testOutput: out }
+  }
+  try {
+    onProgress('Running npm test…\n')
+    await spawnCollect(['node', '--test'], join(REPO_ROOT, 'helper'), { onData: collect })
+    return { success: true, testOutput: out }
+  } catch {
+    return { success: false, testOutput: out }
+  }
 }
 
 async function doRollback(): Promise<{ success: boolean }> {
@@ -423,7 +427,7 @@ ipcMain.handle('update-check', async () => {
     const ahead = await checkUpstreamAhead()
     return { upToDate: ahead.ps === 0 && ahead.client === 0, ahead }
   } catch (e: unknown) {
-    return { error: (e as Error).message }
+    return { error: e instanceof Error ? e.message : String(e) }
   }
 })
 
@@ -433,9 +437,6 @@ ipcMain.handle('update-apply', () => {
 })
 
 ipcMain.handle('update-rollback', () => doRollback())
-
-// Renderer-driven state transition; no action needed in main.
-ipcMain.on('update-skip', () => { /* renderer owns the transition */ })
 
 // ── ad / analytics block (live psView only) ───────────────────────────────────
 // psView wraps the LIVE play.pokemonshowdown.com client (partition 'persist:showdown-ui'), which

@@ -10,38 +10,85 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The helper suite is pure JS (no native deps), so it must hold across every OS/Node the project
+    # promises (engines ">=22.6"). The matrix runs the protocol smoke + full node --test on all legs;
+    # the single-shot checks (gitleaks, lint, typecheck, renderer unit tests, audit) run once on the
+    # canonical ubuntu/Node-22 leg — see the per-step `if:` guards.
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', '24']
+    env:
+      # The canonical leg that also runs the single-shot checks.
+      PRIMARY: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      # Full-history + submodule checkout only on the primary leg (gitleaks needs history; the other
+      # legs only run the pure-JS suite and don't touch vendor/).
+      - if: env.PRIMARY == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           submodules: recursive
           fetch-depth: 0 # gitleaks scans full history
+      - if: env.PRIMARY != 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       # Secret scan FIRST — fail fast before anything else if a credential ever leaks.
-      # Free for public repos (no license env needed).
+      # Free for public repos (no license env needed). Primary leg only (Linux-oriented action).
       - name: Secret scan (gitleaks)
+        if: env.PRIMARY == 'true'
         uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
           cache: 'npm'
-          # No root package-lock.json exists, so setup-node's default lockfile search fails with
-          # "Dependencies lock file is not found". Point it at the lockfiles that actually drive
-          # installs (app + the heavy vendor submodule) so the npm cache keys on real deps.
+          # Point the npm cache at the lockfiles that actually drive installs (root tools, the
+          # showdown-ui app, and the heavy vendor submodule when present).
           cache-dependency-path: |
-            app/package-lock.json
-            vendor/pokemon-showdown/package-lock.json
+            package-lock.json
+            showdown-ui/package-lock.json
 
       - name: Install helper deps
         run: cd helper && npm install
 
-      # Fast gate: the standalone smoke (exits non-zero on failure, unlike the old inline
-      # console.assert) plus the full helper unit suite (parser/exporter/golden/edge cases).
+      # Fast gate: the standalone smoke (exits non-zero on failure) plus the full helper unit suite
+      # (parser/exporter/golden/edge/guards/render/lookup/logmeta/content). Runs on every matrix leg.
       - name: Protocol smoke test
         run: npm run test:smoke
 
       - name: Run helper unit + golden + edge tests
         run: cd helper && node --test
+
+      # ── Single-shot checks (primary leg only) ────────────────────────────────
+      - name: Install root tooling (eslint)
+        if: env.PRIMARY == 'true'
+        run: npm ci
+
+      - name: Lint (eslint)
+        if: env.PRIMARY == 'true'
+        run: npm run lint
+
+      - name: Install showdown-ui deps
+        if: env.PRIMARY == 'true'
+        run: cd showdown-ui && npm ci
+
+      - name: Typecheck (showdown-ui)
+        if: env.PRIMARY == 'true'
+        run: npm run typecheck:ui
+
+      - name: Renderer unit tests (vitest)
+        if: env.PRIMARY == 'true'
+        run: cd showdown-ui && npm run test:unit
+
+      # Advisory only (|| true) — surfaces vulnerable deps without failing PRs, like the Codacy gate.
+      # Flip to `npm audit --audit-level=high` to make it blocking.
+      - name: Dependency audit (advisory)
+        if: env.PRIMARY == 'true'
+        run: |
+          npm audit --omit=dev || true
+          cd showdown-ui && npm audit --omit=dev || true

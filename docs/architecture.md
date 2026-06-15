@@ -536,7 +536,7 @@ GENERATE: generateBattleLog(state, rawFrames, movesData, timezone)
         │  Section 6: RAW PROTOCOL (rawFrames joined, verbatim)
         │
 PERSIST: fs.writeFileSync(logs/battle_info/<filename>.txt)
-         filename: <roomid>_[SPEC_]<p1>_vs_<p2>_<WIN|TIE|INPROGRESS>_<ts>.txt
+         filename: <ts>_<roomid>_[SPEC_]<p1>_vs_<p2>.txt
 ```
 
 ### C. Static Data Loading
@@ -568,11 +568,8 @@ Runtime (Extension):  data.js loadSets(key)
 - **Location:** Dev: `<repo>/logs/battle_info/` | Packaged: `~/Documents/ps-local/logs/battle_info/`
 - **Naming convention:**
   ```
-  Own games:    <roomid>_<p1>_vs_<p2>_WIN_<ts>.txt
-                <roomid>_<p1>_vs_<p2>_LOSS_<ts>.txt
-                <roomid>_<p1>_vs_<p2>_TIE_<ts>.txt
-  Spectator:    <roomid>_SPEC_<p1>_vs_<p2>_WIN_<ts>.txt
-  In-progress:  <roomid>_<p1>_vs_<p2>_INPROGRESS_<ts>.txt
+  Own games:    <ts>_<roomid>_<p1>_vs_<p2>.txt
+  Spectator:    <ts>_<roomid>_SPEC_<p1>_vs_<p2>.txt
   ```
 - **Contents:** 7 sections (SUMMARY, YOUR TEAM, OPPONENT TEAM, FIELD STATE, TURN-BY-TURN, RAW PROTOCOL)
 - **Written by:** `showdown-ui/electron/main/index.ts writeLog()` (primary) and `app/main.js writeLog()` (legacy)
@@ -675,6 +672,19 @@ Runtime (Extension):  data.js loadSets(key)
   "saveLogs": true,         // false disables writing battle log files entirely
   "iconPath": "~/path/to/icon.png"  // optional: live window/taskbar + macOS Dock icon
 }
+```
+
+### overlay/server-config.js
+
+```js
+// Copied to vendor/pokemon-showdown/config/config.js (gitignored)
+// PS server merges this over config-example.js defaults
+module.exports = {
+  port: 8000,
+  bindaddress: '0.0.0.0',
+  noguestsecurity: true,    // allows /trn without token (local login)
+  repl: false
+};
 ```
 
 ### electron-builder.yml Key Settings
@@ -922,3 +932,420 @@ without `setup.js`, the version check is skipped.
 **17. Only battle rooms are forwarded by `injected.js`**  
 `injected.js` only posts frames starting with `>battle-` to the page. Non-battle rooms (lobby, chat,
 team builder) are silently dropped. The parser also validates the roomid format on the first line.
+
+---
+
+## 17. Per-File Reference
+
+Per-file detail extracted from the interactive graph viewer (formerly `architecture.html`). Each entry
+covers exports, callers, key functions, and gotchas specific to that file.
+
+---
+
+### `showdown-ui/electron/main/index.ts` — Entry
+
+**Purpose:** Primary Electron main process. Owns `BattleTracker` rooms map, writes battle logs,
+manages psView `WebContentsView`, installs ad blocker, bridges all IPC channels.
+
+**Exports:** (Electron entry — no exports)
+
+**Called by:** Electron runtime (`app.whenReady`)
+
+**Calls:** `parser.js (BattleTracker)`, `exporter.js (generateBattleLog)`, `preload/index.ts (contextBridge)`, Electron APIs
+
+**Key functions:**
+
+- `handleFrame(frameData)` — Core frame handler: buffers display frames, feeds BattleTracker, detects `|win|`/`|tie|`/`|deinit|`, calls `writeLog`. The hottest path in the app.
+- `writeLog(roomid, state, rawFrames)` — Calls `generateBattleLog` then writes to `logs/battle_info/`. Filename: `<ts>_<roomid>_[SPEC_]<p1>_vs_<p2>.txt`. `SPEC_` prefix for spectator games.
+- `flushAllRooms(reason)` — Writes all open rooms to disk. Wired to `before-quit`, `window-all-closed`, `render-process-gone`, and `uncaughtException` — four exit paths.
+- `sweepStaleRooms()` — Evicts rooms idle >30 min. Called every 5 min via `setInterval(..).unref()` so it does not prevent clean exit.
+- `installAdBlock(session)` — Registers `onBeforeRequest` handler cancelling 80+ ad/analytics domains on the `persist:showdown-ui` session partition (psView only).
+- `createWindow()` — Creates `BrowserWindow` + `WebContentsView` (psView), sizes both, installs preloads, sets up all `ipcMain` handlers for `ps-frame`, `get-buffer`, `set-game-bounds`, `begin-resize`, `end-resize`, `ps-drag-move`, `ps-drag-end`, `open-logs`, `open-external`, `reload-ps`, and the transport-health channels `ps-tap-ok`, `ps-tap-error`, `ps-status`, `get-status`.
+- `pushStatus() / get-status` — Pushes the `PsStatus` snapshot `{tap, page, saveLogs, logWrite}` to the renderer status line over `ps-status`; `get-status` returns it on mount. `logWrite` flips to `"error"` when a real disk/permission write fails so a lost battle log is no longer silent.
+
+**Notes:** #1 most critical file. The `rooms Map<roomid,{tracker,rawFrames,lastSeen}>` is core state. Ad-block patterns are intentionally duplicated from `app/main.js` (CJS/ESM boundary prevents sharing). `MAX_FRAMES_PER_ROOM=100k`, `STALE_ROOM_MS=30min`, `SWEEP_INTERVAL_MS=5min`, `MAX_ROOMS=6`.
+
+---
+
+### `app/main.js` — Entry (Legacy)
+
+**Purpose:** Legacy Electron main (kept for local-mode sandbox and `PS_SYNTHETIC=1` CI). Identical C5 logging contract to `index.ts` but also handles server spawning, static file serving, and headless fixture testing.
+
+**Exports:** (Electron entry — no exports)
+
+**Calls:** `parser.js`, `exporter.js`, `app/logger.js`, `child_process spawn`, `http static server`
+
+**Key functions:**
+
+- `runSynthetic()` — `PS_SYNTHETIC=1`: feeds `helper/test/fixtures/sample-battle.txt` through the real log path with no window. NOTE: no CI workflow invokes this — the actual CI decoupling gate is `npm run test:smoke` (`helper/test/smoke.mjs`).
+- `startServer()` — Spawns pokemon-showdown server child process on `:8000` via `child_process.spawn`. Local mode only.
+- `loadPanelExtension()` — Loads `helper/extension/` as a Chrome extension into Electron session. Used in official mode so the extension panel appears on the live PS client.
+
+**Notes:** Do not add new features here — extend `showdown-ui` instead. The C5 log-write logic contract is identical; any behavioral divergence is a bug.
+
+---
+
+### `showdown-ui/electron/preload/ps.ts` — Preload
+
+**Purpose:** Preload script for the psView `WebContentsView`. Runs `injected.js` in the PS page MAIN world via `new Function()`, relays `postMessage` frames to main via IPC, and relays mouse events during divider drag.
+
+**Exports:** (preload — no exports)
+
+**Called by:** `main/index.ts` (assigned as psView preload)
+
+**Calls:** `injected.js` (executed in-page), `ipcRenderer.send ps-frame, ps-drag-move, ps-drag-end`
+
+**Key functions:**
+
+- `frame relay listener` — `window.addEventListener("message")` captures `{__psHelper:true, data}` from `injected.js`. Validates `__psHelper` token. Sends via `ipcRenderer.send("ps-frame",{data})`.
+- `drag relay` — On `"start-drag-relay"` IPC from main: attaches mousemove/mouseup to the PS page body. Forwards screen coordinates to main for psView repositioning during panel resize drag.
+
+**Notes:** CRITICAL: do NOT add `event.source===window` check in the message listener. MAIN→ISOLATED world delivery uses a different window proxy — the check silently drops every frame. CSP-immune because `new Function()` runs synchronously before page scripts.
+
+---
+
+### `showdown-ui/electron/preload/index.ts` — Preload
+
+**Purpose:** Context bridge for the React renderer. Exposes the `window.psUI` API via `contextBridge.exposeInMainWorld` — the only sanctioned channel between renderer JS and Electron main.
+
+**Exports:** `window.psUI` (via contextBridge)
+
+**Called by:** `main/index.ts` (mainWindow preload), `HelperPanel.tsx` (consumes `window.psUI`)
+
+**Calls:** `ipcRenderer.invoke get-buffer, get-status`, `ipcRenderer.send set-game-bounds, begin-resize, end-resize, open-logs, open-external, reload-ps`, `ipcRenderer.on ps-frame, resize-drag, resize-drag-end, ps-status`
+
+**Key functions:**
+
+- `window.psUI.onFrame(cb)` — Registers `ps-frame` IPC listener. `cb` receives `{data:string}`. One listener at a time — `offFrame()` removes it.
+- `window.psUI.getBuffer()` — Async: invokes `get-buffer` IPC handle in main, returns `{frames:string[], room:string}`. Used on mount and resync.
+- `window.psUI.setGameBounds(rect)` — Sends `{x,y,width,height}` to main so it can call `psView.setBounds()`. Called on every `ResizeObserver` event from the game container div.
+- `window.psUI.beginResize()/endResize()` — Signals divider drag start/end. Main switches psView between bounds-positioning mode and mouse-relay mode.
+
+**Notes:** This is the security boundary. Keep it minimal — only add what the renderer genuinely needs from main.
+
+---
+
+### `app/preload.js` — Preload (Legacy)
+
+**Purpose:** Legacy preload for `app/main.js`. Installs WebSocket tap, relays frames to main, injects testclient session key for local-mode auto-login.
+
+**Key functions:**
+
+- `testclient key injection` — Reads `~/Documents/pokemon-showdown-client/config/testclient-key.js` (or `PS_TESTCLIENT_KEY_PATH` env). Injects as `window.POKEMON_SHOWDOWN_TESTCLIENT_KEY` global for the old PS client auto-login flow.
+
+**Notes:** Mode-aware: official mode uses `new Function()` in shared MAIN world (same as `ps.ts`). Local mode also injects testclient key. If login loops in local mode, the session ID is stale — refresh from `play.pokemonshowdown.com/testclient-key.php`.
+
+---
+
+### `showdown-ui/src/App.tsx` — React
+
+**Purpose:** Root React component. Owns `helperOpen` toggle and `resyncSignal` counter. Renders the toolbar buttons and the `Battle` layout.
+
+**Exports:** `default App`
+
+**Calls:** `Battle.tsx`, `window.psUI.openLogs`, `window.psUI.openExternal`
+
+**Key functions:**
+
+- `resyncSignal state` — Integer counter bumped by the Re-sync button. Passed as prop to `HelperPanel`. Any increment triggers a full tracker reset + buffer replay.
+
+**Notes:** Intentionally thin — all battle logic lives in `HelperPanel`. `helperOpen` collapse/expand just sets the right-pane width to 0 via CSS; psView bounds are re-reported via `setGameBounds`.
+
+---
+
+### `showdown-ui/src/routes/Battle.tsx` — React
+
+**Purpose:** Layout component. Renders the game container div (left), draggable divider, and `HelperPanel` (right). Reports game bounds to main so the psView `WebContentsView` can be positioned and sized.
+
+**Exports:** `default Battle`
+
+**Key functions:**
+
+- `ResizeObserver on gameRef` — Fires `setGameBounds` IPC on every game container resize so the psView overlay stays pixel-aligned with the div placeholder.
+- `divider onMouseDown` — Calls `beginResize()` then listens via `onResizeDrag` IPC. Main relays cursor X from psView mouse events. On mouseup: `endResize()`.
+
+**Notes:** `gameRef` div is just a visual placeholder — the actual PS client is the Electron `WebContentsView` overlay. The two are kept in sync purely through `setGameBounds` IPC calls.
+
+---
+
+### `showdown-ui/src/components/HelperPanel.tsx` — React
+
+**Purpose:** The live battle helper component. Owns `BattleTracker` ref, loads format data, coalesces frame bursts via `requestAnimationFrame`, renders battle HTML via `dangerouslySetInnerHTML`.
+
+**Exports:** `default HelperPanel`
+
+**Calls:** `parser.js BattleTracker`, `render.ts renderBattle/waitingHtml`, `data.ts loadCore/loadFormat`, `window.psUI.onFrame/getBuffer/onStatus/getStatus/reloadPS`
+
+**Key functions:**
+
+- `deriveStatus(transport, phase, dataError)` — Maps `PsStatus {tap, page, saveLogs, logWrite}` + parse phase to the colored status line (ok/idle/warn/error + optional Reload). Surfaces every silent failure: dead tap, offline PS site, broken data, logging OFF, and a real log-write failure (`logWrite==="error"`).
+- `onFrame(payload)` — Hot path. Feeds tracker, detects room change (auto-resync), schedules RAF render, arms stall-detection timer. Called on every `ps-frame` IPC.
+- `doRender()` — Awaits `ensureFormat()`, calls `renderBattle(state,core,fmt)`, updates HTML via `useState`. Only one call per 16ms thanks to RAF coalescing flag.
+- `ensureFormat()` — Lazy-loads per-format tables when `state.formatId` changes. Calls `resolveSetsKey()` then `data.ts loadFormat()`. Caches in `fmtRef`/`fmtKeyRef`.
+- `resync()` — Resets tracker (`tracker.reset()`), calls `getBuffer()`, replays all buffered frames through `onFrame`. Triggered by `resyncSignal` prop increment or room-change detection.
+- `stall detection timer` — 5s timer armed after first post-reset frame. If no `|init|` or `|request|` seen, calls `resync()` once. Handles mid-battle reconnects where early frames were missed.
+
+**Notes:** Most complex component. Key invariant: `trackerRef` is never reconstructed, only `reset()` — stable ref identity across renders. `framesSeenRef` counts frames since last reset; `autoResyncedRef` prevents infinite resync loops.
+
+---
+
+### `showdown-ui/src/lib/render.ts` — Adapter
+
+**Purpose:** Thin adapter over shared `render.js`. Only adds `opts.assetBase` from `import.meta.env.BASE_URL` so Vite resolves category icon paths (`public/icons/categories/*.png`).
+
+**Exports:** `renderBattle(state,core,fmt)`, `waitingHtml()`
+
+**Key functions:**
+
+- `renderBattle(state,core,fmt)` — Calls shared `renderBattle` with `opts={assetBase:import.meta.env.BASE_URL}`. `BASE_URL` is `"/"` in dev, `"./"` in packaged app.
+
+**Notes:** Do not add rendering logic here. Any feature added here is invisible to the Chrome extension. Add it to `render.js` instead.
+
+---
+
+### `showdown-ui/src/lib/data.ts` — Adapter
+
+**Purpose:** Data loader for the Electron renderer. Uses Vite `import.meta.glob` to bundle and lazy-load all data JSONs. Mirrors the interface of `helper/extension/lib/data.js` with TypeScript types.
+
+**Exports:** `loadCore():Promise<Core>`, `loadFormat(key):Promise<FormatData>`
+
+**Key functions:**
+
+- `loadCore()` — Loads `pokedex.json`+`moves.json`+`abilities-desc.json` once, caches in module-scope promise.
+- `loadFormat(key)` — Loads sets/items/abilities/teras/movesFreq/stats JSONs for a format key (e.g. `"gen9"`). Cached per key in `Map`.
+
+**Notes:** Parallel to `data.js` but `import.meta.glob` instead of `chrome.runtime.getURL` fetch. Both cache identically — first load is async, subsequent calls are synchronous from cache.
+
+---
+
+### `helper/extension/lib/parser.js` — Shared Lib
+
+**Purpose:** The battle state machine. `BattleTracker.feed()` consumes raw PS protocol frames and mutates a rich state object. The foundational library used by all three consumers: extension panel, Electron renderer, Electron main.
+
+**Exports:** `class BattleTracker`, `parseDetails(str)`, `parseIdent(str)`, `parseCondition(str)`
+
+**Calls:** (none — zero-dependency pure ESM)
+
+**Key functions:**
+
+- `BattleTracker.feed(frame)` — Main API. Takes raw `"\n"`-separated frame (`">roomid\n|cmd|args…"`). Returns current state. Auto-calls `reset()` on room change. Dispatches each `|cmd|` line to `_handleLine()`.
+- `BattleTracker._handleLine(line)` — Giant dispatch on PS protocol command (~40 cases): `switch`, `move`, `-damage`, `-heal`, `boost`, `-status`, `faint`, `-weather`, `-terrain`, `request`, `win`, `tie`, `deinit`, `-terastallize`, `-ability`, `-item`, and more.
+- `BattleTracker._onRequest(json)` — Parses `|request|` JSON to populate `myTeam[]` with full stats, move PP, ability, item, teraType. This is the authoritative source of the player's own team data.
+- `BattleTracker._reveal(side, species, extra)` — Records/merges a revealed opponent Pokemon. Merges ability union, item union, moves Set union, level capture (once per species per battle).
+- `parseDetails(str)` — Parses PS "details" like `"Charizard-Mega-X, L75, M, shiny, tera:Fire"` → `{species,level,gender,shiny,tera}`.
+- `parseCondition(str)` — Parses HP condition strings like `"82/100 brn"` → `{hp,maxhp,status,fainted}`.
+
+**Notes:** MUST stay zero-dependency — coupling to `chrome` or Node breaks the other consumers. State shape is the shared contract: all consumers read the same fields. Adding new state fields is safe; renaming breaks all three consumers simultaneously. The state includes: `roomid`, `formatId`, `gen`, `mySide`, `players`, `active`, `revealed`, `myTeam`, `turn`, `ended`, `closed`, `weather`, `terrain`, `sideConditions`, `pseudoWeather`, `boosts`, `volatiles`, `winner`, `turnLog`.
+
+---
+
+### `helper/extension/lib/exporter.js` — Shared Lib
+
+**Purpose:** Battle log generator. `generateBattleLog()` takes finalized `BattleTracker` state + raw frames + move data and produces a human-readable 7-section archive file. Synchronous, pure, zero-dependency.
+
+**Exports:** `generateBattleLog(state, rawFrames, movesData, timezone)`
+
+**Called by:** `showdown-ui/electron/main/index.ts (writeLog)`, `app/main.js (writeLog)`
+
+**Key functions:**
+
+- `generateBattleLog(state, rawFrames, movesData, timezone)` — Returns a string. 7 sections: SUMMARY header, YOUR TEAM (from `myTeam[]`), OPPONENT TEAM (`revealed{}`), FIELD STATE AT END, TURN-BY-TURN log, RAW PROTOCOL. Result strings: `YOU WON` / `YOU LOST` / `TIE` / `IN PROGRESS`.
+- `renderTurn(turnNum, lines, movesData)` — Narrates one turn: switches, moves with type/BP from `movesData`, damage with HP%, status changes, stat boosts.
+- `renderFullTeam(myTeam, movesData)` — Renders player's own team from `|request|` data: EV/IV-derived stats, moves with type/category/BP, ability, item, tera type.
+
+**Notes:** Synchronous by design — called in main process on battle-end, no `await` needed. `timezone` only affects the "Generated:" header line. Produces the same output whether called from `showdown-ui` or `app/` (identical C5 contract).
+
+---
+
+### `helper/extension/lib/render.js` — Shared Lib
+
+**Purpose:** The single shared HTML renderer. All battle UI for both the Chrome extension panel AND the Electron helper panel is generated here. Pure function: state + data tables → HTML string.
+
+**Exports:** `renderBattle(state,core,fmt,opts)`, `waitingHtml(tapWarning)`
+
+**Internal builders (not exported):** `statBar()`, `statRangeBar()`, `typeTags()`, `moveChip()`, `breakdownCard()`, `myActiveCard()`, `renderSideHtml()`
+
+**Called by:** `helper/extension/panel.js`, `showdown-ui/src/lib/render.ts`
+
+**Calls:** `lookup.js getBreakdown, resolveSetsKey`
+
+**Key functions:**
+
+- `renderBattle(state, core, fmt, opts)` — Top-level entry. Three code paths: spectator (`mySide===null`, both sides shown), player (`mySide` known), waiting (no format or closed). Returns `{format:string, html:string}`.
+- `breakdownCard(species, reveal, core, fmt, meta, activeHp)` — Full opponent Pokemon card: stat range bars (lo-hi uncertainty), known/predicted ability+item, predicted tera, set predictions with move frequency percentages.
+- `statRangeBar(label, lo, hi, max)` — Solid bar to `lo` value + translucent extension to `hi` value. Shows the range of possible stats given the opponent's level and format (randbat level distribution).
+- `myActiveCard(pokemon, teamData, core)` — Your active Pokemon card: actual EVd stats from `|request|`, current HP bar, status badge, move list with remaining PP.
+- `renderSideHtml(state, side, label, core, fmt)` — Renders one side's active + bench for spectator mode. Both sides shown simultaneously.
+
+**Notes:** THE golden rule: add new UI features HERE, not in `render.ts` or `panel.js`. `panel.css` and `src/styles/global.css` are separate copies of the same CSS — keep them in sync manually. The module-scoped `_assetBase` is overridden by `opts.assetBase` (passed by Electron to resolve Vite asset paths).
+
+---
+
+### `helper/extension/lib/lookup.js` — Shared Lib
+
+**Purpose:** The prediction engine. `getBreakdown()` narrows possible Pokemon sets based on revealed moves and computes Monte Carlo probability distributions for items, abilities, and tera types.
+
+**Exports:** `getBreakdown(species, data, revealedMoves)`, `resolveSetsKey(formatId)`
+
+**Calls:** `toid.js toId`
+
+**Key functions:**
+
+- `getBreakdown(species, data, revealedMoves)` — Core prediction: deduplicates sets with identical movepools, filters to sets compatible with all revealed moves (`lowConfidence=true` if none match), computes per-role distributions, returns breakdown with `predictedItems`/`Abilities`/`Teras` as `[{name,pct}]` arrays.
+- `resolveSetsKey(formatId)` — Maps `"gen9randombattle"`→`"gen9"`, `"gen9randomdoublesbattle"`→`"gen9doubles"`. Returns `null` for non-random formats (no data shipped).
+- `largestRemainderPct(entries, grand)` — Hamilton method: distributes integers that sum to exactly 100%. Used for all probability displays to avoid rounding errors.
+- `deduplicateSets(sets)` — Merges sets with identical movepools across roles. Unions abilities/teras, stores `_roles` for Monte Carlo lookups. Reduces "Pivot" vs "Offensive" noise in UI.
+
+**Notes:** Only works for random-battle formats. `confirmed=true` when exactly 1 possible set remains AND all 4 moves have been seen. `lowConfidence=true` when no set contains all revealed moves (opponent used surprise moves). The breakdown object is the bridge between data tables and the render layer.
+
+---
+
+### `helper/extension/lib/data.js` — Shared Lib
+
+**Purpose:** Data loader for the Chrome extension. Fetches JSON from `chrome.runtime.getURL()`, caches in module-scope Maps. Mirror interface to `showdown-ui/src/lib/data.ts`.
+
+**Exports:** `loadCore()`, `loadSets(key)`, `loadItems(key)`, `loadAbilities(key)`, `loadTera(key)`, `loadMovesFreq(key)`, `loadStats(key)`
+
+**Key functions:**
+
+- `loadCore()` — Loads `pokedex.json`+`moves.json`+`abilities-desc.json`. Caches in `corePromise` (never re-fetches).
+- `loadSets/Items/Abilities/Tera/MovesFreq/Stats(key)` — Per-format lazy loaders. Each caches in its own `Map` keyed by format string (e.g. `"gen9"`).
+
+**Notes:** Fail-graceful: returns `null` for any missing file. The `data/` directory is frozen at build time — run `cd helper && node build-data.js` after upstream PS data changes. `build-data.js` requires Node ≥22.6 for TS type-stripping.
+
+---
+
+### `helper/extension/lib/toid.js` — Shared Lib
+
+**Purpose:** Utility: converts any Pokemon/move/item name to its PS ID (lowercase, alphanumeric only). Required for all data lookups.
+
+**Exports:** `toId(name)`
+
+**Key functions:**
+
+- `toId(name)` — `"Iron Bundle"`→`"ironbundle"`, `"Lum Berry"`→`"lumberry"`, `"Knock Off"`→`"knockoff"`. Strips spaces, hyphens, apostrophes, etc.
+
+**Notes:** Tiny but critical. Every key in `sets.json`, `pokedex.json`, `moves.json` uses this format. Any lookup skipping `toId` normalization silently misses.
+
+---
+
+### `helper/extension/injected.js` — Extension
+
+**Purpose:** The WebSocket tap. Subclasses `window.WebSocket` in the page MAIN world to intercept PS battle frames before SockJS captures the constructor. Used by BOTH Electron apps AND the Chrome extension.
+
+**Exports:** (IIFE — patches `window.WebSocket` in place)
+
+**Called by:** `ps.ts` (`new Function()` eval), `app/preload.js` (`new Function()` eval), `manifest.json` (`world:MAIN`, `run_at:document_start`)
+
+**Calls:** `window.postMessage` to page origin
+
+**Key functions:**
+
+- `PatchedWebSocket(url, protocols)` — Wraps `NativeWebSocket`. Detects sim socket: URL ends with `/websocket` AND (contains `psim.us` OR `localhost:8000` OR `localhost:8080`). On sim sockets, attaches message listener that decodes and forwards frames.
+- `decodeSockJS(raw)` — Parses SockJS `a[...]` frames. Returns `[]` for control frames (`o`/`h`/`c`). Returns array of PS protocol message strings for `a[...]` frames.
+- `postMessage per frame` — Posts `{__psHelper:true, data:psMsg}` to `window.location.origin` (NOT `'*'`). Only forwards frames starting with `>battle-`.
+
+**Notes:** MUST run before SockJS. The 15-second diagnostic timer warns if no sim socket seen (helps debug extension not loading). NEVER change `postMessage` target to `'*'` — security regression. The URL filter must cover BOTH `psim.us` (official) and `localhost` (local mode) or the tap silently produces nothing on one path.
+
+---
+
+### `helper/extension/panel.js` — Extension
+
+**Purpose:** Chrome extension helper panel (runs in iframe injected by `content.js` into the PS page). Owns `BattleTracker`, loads data via `data.js`, coalesces renders via rAF, renders via `render.js`.
+
+**Exports:** (iframe context — no exports)
+
+**Called by:** `content.js` (iframe postMessage: `ps-frame`, `panel-shown`, `room-changed`)
+
+**Calls:** `parser.js BattleTracker`, `render.js renderBattle`, `data.js loadCore/loadSets/etc`, `lookup.js resolveSetsKey`
+
+**Key functions:**
+
+- `scheduleRender()` — Arms `requestAnimationFrame` if `renderQueued` flag is false. Same coalescing pattern as `HelperPanel.tsx`.
+- `resync(room)` — Resets tracker, calls `chrome.runtime.sendMessage({type:"get-buffer",room})`, replays returned frames.
+- `ensureSets()` — Lazy-loads all six per-format tables from `data.js` when format key changes. Same logic as `HelperPanel.ensureFormat()`.
+
+**Notes:** Behavioral mirror of `HelperPanel.tsx`. Any difference in rendered output between extension panel and Electron helper is a bug. Both call `renderBattle()` on identical state.
+
+---
+
+### `helper/extension/content.js` — Extension
+
+**Purpose:** Chrome content script (ISOLATED world). Bridges `injected.js` (MAIN world) and extension system. Injects helper panel iframe, buffers frames to `background.js`, routes frames to correct panel.
+
+**Exports:** (content script — no exports)
+
+**Called by:** Chrome extension runtime (`run_at:document_start`), `injected.js` (`window.postMessage`)
+
+**Calls:** `background.js` (`chrome.runtime.sendMessage: ps-frame, get-buffer`), `panel.js` (`iframe.contentWindow.postMessage`)
+
+**Key functions:**
+
+- `frameHandler(event)` — Validates `origin===location.origin` and `event.data.__psHelper===true`. Sends frame to background (all rooms) and to panel iframe (foreground room only).
+- `injectPanel()` — Creates fixed-position overlay div + iframe (`panel.html?pageOrigin=…`). Adds drag handle for resize. Persists width to `chrome.storage.local`.
+- `foregroundRoom()` — Detects current battle room from URL hash/pathname. Polled every 700ms because PS may route via History API without changing location.
+
+**Notes:** DO NOT add `event.source===window` check in `frameHandler`. MAIN→ISOLATED cross-world `postMessage` uses a different window proxy and the check silently drops ALL frames. This is the #1 extension gotcha.
+
+---
+
+### `helper/extension/background.js` — Extension
+
+**Purpose:** Chrome MV3 service worker. Buffers all battle frames in `storage.session` (survives worker restarts within session). Serves frame replay via `get-buffer`. Relays toolbar clicks as `toggle-panel`.
+
+**Exports:** (service worker — no exports)
+
+**Called by:** `content.js` (`chrome.runtime.sendMessage`), `chrome.action.onClicked` (toolbar)
+
+**Calls:** `chrome.storage.session`, `chrome.tabs.sendMessage toggle-panel`
+
+**Key functions:**
+
+- `handleFrame(data)` — Extracts `roomId` from frame first line. Appends to `buffers[room]` (max 2000 frames/room). Evicts oldest room when >6 rooms. Debounces `storage.session` persist by 500ms.
+- `Cold-start rehydration` — On worker start: reads `buffers` from `storage.session` before processing any messages. Queues inbound during load (`readyPromise`) to prevent frame loss on worker restart.
+
+**Notes:** MV3 service workers can be killed by Chrome at any time — `storage.session` persist is essential. The 500ms debounce means up to 500ms of frames can be lost if Chrome kills the worker in that window. `storage.session` is Chrome-only; null-guarded for safety.
+
+---
+
+### `app/logger.js` — Script
+
+**Purpose:** Runtime logger for `app/main.js`. Creates namespace-tagged loggers writing to console + `logs/debug/app-<ts>.log`. Format: `ISO [LEVEL] [ns] msg`.
+
+**Exports:** `createLogger(ns)`, `logFilePath`
+
+**Key functions:**
+
+- `createLogger(ns)` — Returns `{debug,info,warn,error}`. Threshold from `PS_LOG_LEVEL` env var. All methods write to both console and the log file.
+
+**Notes:** One of three loggers (`app/logger.js`, `scripts/lib/logger.js`, inline in `showdown-ui index.ts`) that must stay in format sync (C7 contract: `"ISO [LEVEL] [ns] msg"`).
+
+---
+
+### `scripts/lib/logger.js` — Script
+
+**Purpose:** Orchestration logger for `scripts/`. Same format as `app/logger.js` plus a `step()` timer method for timed build phases.
+
+**Exports:** `createLogger(ns)`
+
+**Key functions:**
+
+- `createLogger(ns)` — Returns `{debug,info,warn,error,step}`. `step(label)` logs with elapsed ms since last `step` call — useful for timing build phases.
+
+**Notes:** Script logs go to `logs/debug/<script>-<ts>.log` (not `app-<ts>.log`). When debugging a failed `setup.js` or `update-upstream.js` run, check the correct file.
+
+---
+
+### `scripts/apply-overlay.js` — Script
+
+**Purpose:** Copies `overlay/server-config.js` → `vendor/pokemon-showdown/config/config.js` and `overlay/client-config.js` → `vendor/pokemon-showdown-client/config/config.js`. Both targets are gitignored.
+
+**Exports:** (script — no exports)
+
+**Called by:** `npm run apply-overlay`, `scripts/setup.js`, `scripts/update-upstream.js`
+
+**Key functions:**
+
+- `main()` — Validates both overlay source files exist, copies to `vendor/` targets, logs success. Idempotent — safe to run multiple times.
+
+**Notes:** If local mode or server config seems wrong, run `npm run apply-overlay`. If `vendor/` shows changes afterward, those files are not gitignored correctly — check `.gitignore` entries.
