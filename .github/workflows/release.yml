@@ -29,7 +29,10 @@ jobs:
       - name: Install showdown-ui deps
         run: cd showdown-ui && npm ci
       - name: Build dmg + zip (unsigned)
-        run: cd showdown-ui && npm run dist:mac
+        # --publish never: electron-builder auto-publishes to GitHub Releases when it sees a tag, which
+        # fails without GH_TOKEN and would race the dedicated publish job below. Build only; the publish
+        # job collects every OS's artifacts and creates the Release with softprops/action-gh-release.
+        run: cd showdown-ui && npm run dist:mac -- --publish never
       - name: Assert dmg is a valid disk image
         run: |
           shopt -s nullglob
@@ -67,7 +70,8 @@ jobs:
       - name: Install showdown-ui deps
         run: cd showdown-ui && npm ci
       - name: Build AppImage + tar.gz
-        run: cd showdown-ui && npm run dist:linux
+        # --publish never: build only; the publish job creates the Release (see macOS job note).
+        run: cd showdown-ui && npm run dist:linux -- --publish never
       - name: Assert AppImage is a real binary
         run: |
           shopt -s nullglob
@@ -105,7 +109,8 @@ jobs:
       - name: Install showdown-ui deps
         run: cd showdown-ui && npm ci
       - name: Build NSIS installer + portable
-        run: cd showdown-ui && npm run dist:win
+        # --publish never: build only; the publish job creates the Release (see macOS job note).
+        run: cd showdown-ui && npm run dist:win -- --publish never
       - name: Assert installer is a real PE binary
         shell: pwsh
         run: |
