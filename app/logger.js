@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename */
 // ps-local runtime logger (C7). Mirrors scripts/lib/logger.js's format so app and
 // orchestration logs are directly comparable. Console + append to logs/debug/app-<ts>.log.
 // Level threshold from PS_LOG_LEVEL (DEBUG|INFO|WARN|ERROR; default INFO).

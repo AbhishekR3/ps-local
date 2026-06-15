@@ -27,8 +27,9 @@ function loadConfig(): Config {
   const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
   try {
     return { ...defaults, ...JSON.parse(readFileSync(join(USER_ROOT, 'config.json'), 'utf8')) }
-  } catch (e: any) {
-    if (e.code !== 'ENOENT') _configWarning = `config.json invalid (${e.message}) — using defaults`
+  } catch (e: unknown) {
+    const err = e as NodeJS.ErrnoException
+    if (err.code !== 'ENOENT') _configWarning = `config.json invalid (${err.message}) — using defaults`
     return defaults
   }
 }
@@ -94,7 +95,7 @@ function createLogger(ns: string) {
 const log  = createLogger('ui-main')
 const wlog = createLogger('ui-wlog')
 
-if (_configWarning) log.warn(_configWarning)
+if (_configWarning !== null) log.warn(_configWarning)
 
 // Resolve config.iconPath → a nativeImage for the window/taskbar (Linux/Windows) and macOS Dock.
 // Tilde-expands ~; missing/unreadable files warn and fall back to the bundled icon.
@@ -108,30 +109,32 @@ function resolveIcon(p: string | undefined): Electron.NativeImage | undefined {
 }
 
 // ── Move metadata (read once at ready; optional — rich logs degrade to bare ids without it) ──
-let movesData: Record<string, any> = {}
+let movesData: Record<string, unknown> = {}
 
 function loadMovesData(): void {
   const p = join(DATA_DIR, 'helper', 'extension', 'data', 'moves.json')
   try {
     movesData = JSON.parse(readFileSync(p, 'utf8'))
     log.info(`movesData loaded: ${Object.keys(movesData).length} moves`)
-  } catch (e: any) {
+  } catch (e: unknown) {
     movesData = {}
-    log.warn(`movesData not loaded (${e?.message}); rich logs will use bare move ids`)
+    log.warn(`movesData not loaded (${(e as Error).message}); rich logs will use bare move ids`)
   }
 }
 
 // ── Battle log writer (C5) ────────────────────────────────────────────────────
+// Minimal shape of BattleTracker.state needed by this file. The full type lives in parser.js (JS).
+interface BattleState { turn: number; mySide: string | null; formatId?: string; [k: string]: unknown }
 // Per-room accumulators: roomid → { tracker, rawFrames, lastSeen }.
 // One tracker per room: feed() auto-resets on a new roomid, so a shared tracker would thrash.
-interface RoomEntry { tracker: any; rawFrames: string[]; lastSeen: number }
+interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number }
 const rooms = new Map<string, RoomEntry>()
 
 const STALE_ROOM_MS      = 30 * 60 * 1000  // evict rooms idle longer than this (saved as INPROGRESS)
 const MAX_FRAMES_PER_ROOM = 100_000         // hard cap to bound memory
 const SWEEP_INTERVAL_MS  = 5 * 60 * 1000   // stale-room sweep cadence
 
-function writeLog(roomid: string, state: any, rawFrames: string[]): void {
+function writeLog(roomid: string, state: BattleState, rawFrames: string[]): void {
   if (!config.saveLogs) {
     wlog.debug(`saveLogs=false — skipping log write for ${roomid} (turn=${state.turn})`)
     return
@@ -148,8 +151,8 @@ function writeLog(roomid: string, state: any, rawFrames: string[]): void {
     wlog.info(`wrote ${richPath} (${rich.length} B)`)
     // Recovered after a prior failure — clear the error so the status line returns to OK.
     if (psStatus.logWrite === 'error') { psStatus.logWrite = 'ok'; pushStatus() }
-  } catch (e: any) {
-    wlog.error(`writeLog failed for ${roomid}: ${e?.stack}`)
+  } catch (e: unknown) {
+    wlog.error(`writeLog failed for ${roomid}: ${(e as Error).stack}`)
     // A real disk/permission failure loses a battle log silently — surface it on the status line.
     psStatus.logWrite = 'error'
     pushStatus()
@@ -161,7 +164,7 @@ function flushAllRooms(reason: string): void {
   wlog.warn(`flushing ${rooms.size} open room(s) on ${reason}`)
   for (const [roomid, entry] of rooms) {
     try { writeLog(roomid, entry.tracker.state, entry.rawFrames) }
-    catch (e: any) { wlog.error(`flushAllRooms failed for ${roomid}: ${e?.stack}`) }
+    catch (e: unknown) { wlog.error(`flushAllRooms failed for ${roomid}: ${(e as Error).stack}`) }
   }
   rooms.clear()
 }
@@ -172,7 +175,7 @@ function sweepStaleRooms(): void {
     if (now - entry.lastSeen > STALE_ROOM_MS) {
       wlog.warn(`evicting stale room ${roomid} (idle ${Math.round((now - entry.lastSeen) / 1000)}s, turn=${entry.tracker.state.turn})`)
       try { writeLog(roomid, entry.tracker.state, entry.rawFrames) }
-      catch (e: any) { wlog.error(`stale flush failed for ${roomid}: ${e?.stack}`) }
+      catch (e: unknown) { wlog.error(`stale flush failed for ${roomid}: ${(e as Error).stack}`) }
       rooms.delete(roomid)
     }
   }
@@ -248,11 +251,11 @@ function bufferFrame(data: string): void {
 
 // ── IPC: relay tapped PS frames to the helper renderer ───────────────────────
 ipcMain.on('ps-frame', (_event, payload: { data: string }) => {
-  if (typeof payload?.data !== 'string') return
+  if (typeof payload.data !== 'string') return
   bufferFrame(payload.data)
   // Drive the log writer (same contract as app/main.js C5 path).
   try { handleFrame(payload.data) }
-  catch (e: any) { log.error(`handleFrame error: ${e?.stack}`) }
+  catch (e: unknown) { log.error(`handleFrame error: ${(e as Error).stack}`) }
 
   if (!mainWindow || mainWindow.webContents.isLoading()) {
     const room = roomidOf(payload.data)
@@ -319,7 +322,7 @@ function pushStatus(): void {
 ipcMain.on('ps-tap-ok', () => { psStatus.tap = 'ok'; pushStatus() })
 ipcMain.on('ps-tap-error', (_event, info: { reason?: string }) => {
   psStatus.tap = 'error'
-  log.error(`ps tap failed to install (${info?.reason || 'unknown'}) — battle help will receive no frames`)
+  log.error(`ps tap failed to install (${info.reason || 'unknown'}) — battle help will receive no frames`)
   pushStatus()
 })
 
@@ -553,7 +556,7 @@ app.on('render-process-gone', (_e, _wc, details) => {
 
 // Last-resort: flush on an otherwise-fatal error, then exit.
 process.on('uncaughtException', (err) => {
-  log.error(`uncaughtException: ${err?.stack}`)
+  log.error(`uncaughtException: ${err.stack}`)
   flushAllRooms('uncaughtException')
   app.exit(1)
 })

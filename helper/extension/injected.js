@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection */
 // Runs in the PAGE's JS context (world: MAIN) via manifest declaration.
 // Manifest-declared content scripts bypass the page's Content Security Policy —
 // Chrome injects them directly into the renderer, not via a <script> element.

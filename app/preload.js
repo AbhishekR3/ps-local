@@ -55,6 +55,25 @@ function readTestclientKey() {
   }
 }
 
+// Inject one inline <script> into the page MAIN world. Runs synchronously on insertion.
+function injectOneScript(src, root) {
+  const s = document.createElement('script');
+  s.textContent = src;
+  root.prepend(s);
+  s.remove();
+}
+
+// Inject tapSrc (and optional keySrc) if the DOM root is available. Returns false when the root
+// isn't ready yet — caller should defer via readystatechange.
+function injectScripts(tapSrc, keySrc) {
+  const root = document.head || document.documentElement;
+  if (!root) return false;
+  // Inline scripts run on insertion, so call order = run order: tap first, then the key global.
+  injectOneScript(tapSrc, root);
+  if (keySrc) injectOneScript(keySrc, root);
+  return true;
+}
+
 // 1. Install the tap before the page constructs its sim WebSocket.
 if (MODE === 'official') {
   // contextIsolation:false means this preload shares the page's window and runs before any page
@@ -80,24 +99,10 @@ if (MODE === 'official') {
     // storage.js reads this global during App.initialize (well after document_start), so setting it
     // here is early enough; JSON.stringify safely quotes/escapes the value.
     const keySrc = sid ? `window.POKEMON_SHOWDOWN_TESTCLIENT_KEY = ${JSON.stringify(sid)};` : null;
-    function injectOne(src, root) {
-      const s = document.createElement('script');
-      s.textContent = src;
-      root.prepend(s);
-      s.remove();
-    }
-    function doInject() {
-      const root = document.head || document.documentElement;
-      if (!root) return false;
-      // Inline scripts run on insertion, so call order = run order: tap first, then the key global.
-      injectOne(tapSrc, root);
-      if (keySrc) injectOne(keySrc, root);
-      return true;
-    }
     const what = keySrc ? 'tap + testclient key' : 'tap';
-    if (!doInject()) {
+    if (!injectScripts(tapSrc, keySrc)) {
       document.addEventListener('readystatechange', function onReady() {
-        if (doInject()) {
+        if (injectScripts(tapSrc, keySrc)) {
           document.removeEventListener('readystatechange', onReady);
           plog('INFO', `${what} injected into MAIN world (deferred)`);
         }

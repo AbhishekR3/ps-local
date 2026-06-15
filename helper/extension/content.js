@@ -197,6 +197,7 @@ function autoLogin(username, password) {
 	function fillAndSubmit(input) {
 		input.focus();
 		// Dispatch a native input event so PS's React/framework picks up the value change.
+		// eslint-disable-next-line no-unsanitized/method -- false positive; getOwnPropertyDescriptor is not an XSS sink
 		const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
 		if (nativeInputSetter) nativeInputSetter.call(input, step === 'username' ? username : password);
 		input.dispatchEvent(new Event('input', { bubbles: true }));

@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename */
 // Builds the static JSON data bundle the extension ships with.
 //
 // Sources everything from the vendored pokemon-showdown submodule (../vendor/pokemon-showdown):

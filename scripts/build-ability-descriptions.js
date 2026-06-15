@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection */
 // Builds helper/extension/data/abilities-desc.json — ability display names + one-line descriptions
 // for the battle helper.
 //

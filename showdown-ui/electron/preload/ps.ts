@@ -33,7 +33,7 @@ if (!tapSrc) {
   try {
     // contextIsolation:false → preload shares the page window, so we can run the tap
     // inline with new Function() before any page script captures window.WebSocket.
-    new Function(tapSrc)()  // eslint-disable-line no-new-func
+    new Function(tapSrc)()  // eslint-disable-line no-new-func, security/detect-eval-with-expression
     console.log('[ps-preload] tap install ok')
     ipcRenderer.send('ps-tap-ok')
   } catch (e: unknown) {
@@ -60,8 +60,9 @@ let _relayUp:   (() => void) | null = null
 ipcRenderer.on('start-drag-relay', () => {
   _relayMove = (e: MouseEvent) => ipcRenderer.send('ps-drag-move', { screenX: e.screenX })
   _relayUp   = () => {
-    document.removeEventListener('mousemove', _relayMove!)
-    document.removeEventListener('mouseup',   _relayUp!)
+    const m = _relayMove, u = _relayUp
+    if (m) document.removeEventListener('mousemove', m)
+    if (u) document.removeEventListener('mouseup',   u)
     _relayMove = null
     _relayUp   = null
     ipcRenderer.send('ps-drag-end')

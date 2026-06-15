@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable security/detect-non-literal-fs-filename */
 'use strict';
 // Copies the ps-local config overlays onto the (gitignored) config/config.js targets inside each
 // vendor submodule. This is the ONLY supported way to configure the vendored repos — no source file

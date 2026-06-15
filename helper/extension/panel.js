@@ -57,11 +57,9 @@ async function ensureSets() {
 function scheduleRender() {
 	if (renderQueued) return;
 	renderQueued = true;
-	requestAnimationFrame(async () => {
-		console.log('[PSH panel] rAF fired');
+	requestAnimationFrame(() => {
 		renderQueued = false;
-		await ensureSets();
-		render();
+		ensureSets().then(render).catch((e) => console.warn('[PSH panel] render failed', e));
 	});
 }
 
@@ -71,7 +69,7 @@ function render() {
 	const fmt = { sets: currentSets, items: currentItems, abilities: currentAbilities, teras: currentTeras, movesFreq: currentMovesFreq, stats: currentStats };
 	const { format, html } = renderBattle(s, core, fmt, { tapWarning });
 	$format.textContent = format;
-	$content.innerHTML = html;
+	$content.innerHTML = html; // eslint-disable-line no-unsanitized/property -- html from our own renderBattle(), never user input
 }
 
 // --- wire up data flow --------------------------------------------------------

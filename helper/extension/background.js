@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection */
 // Service worker: buffers each battle room's protocol frames so the panel can reconstruct
 // state even when opened mid-battle, survives MV3 worker termination by persisting to
 // chrome.storage.session, and toggles the panel on toolbar click.
