@@ -537,6 +537,77 @@ Create `docs/assets/` (placeholder markup ready; owner drops real PNGs later).
 
 ---
 
+## Part 9 — Auto-update mechanism (Phase P7)
+
+**Goal:** When the app boots, check whether either PS upstream submodule has new commits available. Show a simple loading screen, present results, let the user accept or skip. If accepted, run the update and verify nothing breaks. If tests fail, offer a one-click rollback.
+
+### 9.0 — Scope and constraints
+
+- **What is being updated:** The PS upstream submodules (`vendor/pokemon-showdown`, `vendor/pokemon-showdown-client`) — _not_ the app binary. Binary updates are a separate download from GitHub Releases.
+- **Packaged app (asar):** Source files inside the asar are read-only. In a packaged install, the update check cannot modify the vendored data. The UI must detect `app.isPackaged` and instead show: _"A new version of ps-local is available. Download the latest installer from GitHub Releases."_ with a link. No in-app merge for packaged users.
+- **From-source / dev:** The full update + rollback flow applies.
+- **`npm run update-upstream` already exists** (`scripts/update-upstream.js`) — wire to it rather than reimplementing.
+- **`config.checkUpdatesOnBoot`:** New optional boolean (default `true`). When `false`, skip the check entirely and proceed directly to the main UI.
+
+### 9.1 — IPC surface
+
+New channels (all bidirectional renderer ↔ main):
+
+| Channel | Direction | Payload |
+|---|---|---|
+| `update-check-request` | renderer → main | — |
+| `update-check-result` | main → renderer | `{ upToDate: boolean, ahead: { ps: number, client: number }, error?: string }` |
+| `update-apply-request` | renderer → main | — |
+| `update-apply-progress` | main → renderer | `{ step: string }` (streamed lines from update-upstream) |
+| `update-apply-result` | main → renderer | `{ success: boolean, testOutput?: string }` |
+| `update-rollback-request` | renderer → main | — |
+| `update-rollback-result` | main → renderer | `{ success: boolean }` |
+| `update-skip` | renderer → main | — (proceed to main UI) |
+
+Expose all channels in `showdown-ui/electron/preload/index.ts` via `contextBridge`.
+
+### 9.2 — Main process changes (`showdown-ui/electron/main/index.ts`)
+
+1. **Config interface** — add `checkUpdatesOnBoot?: boolean` (default `true` when absent).
+2. **`checkUpstreamAhead()`** — async function, runs `git fetch` on both submodule remotes (10 s timeout), then `git rev-list HEAD..@{u} --count` to get the commit-ahead counts. Returns `{ ps: number, client: number }` or throws on error.
+3. **`applyUpdate()`** — spawns `npm run update-upstream` from the repo root (captures stdout/stderr, streams via `update-apply-progress` IPC). After completion, runs `npm test` + `npm run test:smoke`; returns `{ success, testOutput }`.
+4. **`rollback(priorShas)`** — `git -C vendor/pokemon-showdown checkout <sha>` + `git -C vendor/pokemon-showdown-client checkout <sha>` using the SHAs captured before `applyUpdate()`.
+5. **Boot sequence** — in `app.whenReady()`, before `createWindow()`: if `config.checkUpdatesOnBoot !== false` and `!app.isPackaged`, record prior SHAs, then `createWindow()` (the React app immediately shows `UpdateScreen` which triggers `update-check-request`). If `app.isPackaged`, pass a flag to the renderer to show the packaged-update notice instead.
+
+### 9.3 — Renderer changes
+
+**`showdown-ui/src/components/UpdateScreen.tsx` (new):**
+
+Five states, rendered in sequence:
+
+| State | UI |
+|---|---|
+| `checking` | Spinner + "Checking for upstream updates…" |
+| `up-to-date` | "Everything is up to date." + "Continue" button (→ skip to main UI) |
+| `update-available` | "X new commit(s) in pokemon-showdown, Y in client." + "Update & verify" button + "Skip for now" button |
+| `applying` | Progress lines streamed from main; no cancel (destructive mid-run cancels are unsafe) |
+| `result-fail` | Test output (truncated to last 50 lines) + "Roll back" button + "Keep & continue" button |
+| `result-success` | "Update applied and verified." + "Continue" button |
+| `packaged-update` | "ps-local vX.Y.Z is available. Download from GitHub Releases." + link |
+
+**`showdown-ui/src/App.tsx`** — gate the main app render behind `updateComplete` state. While `!updateComplete`, render `<UpdateScreen onDone={() => setUpdateComplete(true)} />`.
+
+### 9.4 — Config and docs
+
+- `config.example.json` — add `"checkUpdatesOnBoot": true` with a comment explaining the flag.
+- `CLAUDE.md` (runtime env flags section) — document `checkUpdatesOnBoot`.
+
+### 9.5 — Validation gate
+
+1. **From source, up to date:** Boot → "Everything is up to date" → Continue → main UI loads.
+2. **From source, updates available:** Boot → update available → "Update & verify" → progress streams → "applied and verified" → Continue → main UI loads.
+3. **From source, test failure:** Manually introduce a bad submodule state → "Update & verify" → tests fail → rollback offer → "Roll back" → app continues on prior state.
+4. **Packaged app:** `app.isPackaged` path shows the Releases link, no merge attempted.
+5. **Bad network / timeout:** 10 s timeout on `git fetch` → graceful error state → "Skip for now" unblocks the app.
+6. **`checkUpdatesOnBoot: false`:** Update screen never shown; app proceeds immediately to main UI.
+
+---
+
 ## Critical files
 
 - `.github/workflows/build-electron.yml` (new), `build-linux.yml`/`build-windows.yml` (+`workflow_dispatch`),
