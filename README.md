@@ -5,16 +5,23 @@
 
 An Electron app that **automatically saves a rich battle log for every Pokémon Showdown battle** — a raw protocol dump plus a human-readable breakdown — with zero per-battle action. Play on the live `play.pokemonshowdown.com` ladder in a native docked window with an integrated battle helper panel that shows the opponent's predicted sets, stats, abilities, and Tera types live.
 
-![Full window view — PS client (left) + helper panel (right)](docs/assets/battle-view.png)
+## See It In Action
+
+![UI Demo — Live battle with real-time helper predictions](docs/assets/UI-Demo.gif)
+
 
 ## Downloads
 
-| OS | Minimum Requirements | Download | Status |
+Grab the installer for your platform from the **[latest release](https://github.com/AbhishekR3/ps-local/releases/latest)** — each row below links straight to that release and names the asset to download.
+
+| OS | Minimum Requirements | Download (asset to pick) | Status |
 |---|---|---|---|
-| **macOS** | macOS 10.13 High Sierra or later | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml) |
-| **Linux** | Ubuntu 18.04+ / glibc ≥ 2.17 | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml) |
-| **Windows** | Windows 10 or later | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml) |
-| **Chromium Extension** | Chrome / Chromium 88+ | [GitHub Releases](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-chromium-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml) |
+| **macOS** | macOS 10.13 High Sierra or later | [⬇ `.dmg` installer](https://github.com/AbhishekR3/ps-local/releases/latest) (or `-mac.zip` portable) | [![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml) |
+| **Linux** | Ubuntu 18.04+ / glibc ≥ 2.17 | [⬇ `.AppImage`](https://github.com/AbhishekR3/ps-local/releases/latest) (or `.tar.gz` unpacked) | [![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml) |
+| **Windows** | Windows 10 or later | [⬇ NSIS `.exe` installer](https://github.com/AbhishekR3/ps-local/releases/latest) (or portable `.exe`) | [![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml) |
+| **Chromium Extension** | Chrome / Chromium 88+ | [⬇ `ps-local-extension.zip`](https://github.com/AbhishekR3/ps-local/releases/latest) | [![build-chromium-extension](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-extension.yml) |
+
+> Releases are published automatically by [`release.yml`](.github/workflows/release.yml) when a `vX.Y.Z` tag is pushed — it builds every installer above and attaches them to the GitHub Release.
 
 > **macOS — unsigned build.** After dragging to Applications, **right-click → Open** once, or run:
 > ```bash

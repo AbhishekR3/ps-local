@@ -1,7 +1,12 @@
 {
   "name": "ps-local",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Electron app that auto-saves rich Pokémon Showdown battle logs with a docked live helper panel.",
   "private": false,
+  "homepage": "https://github.com/AbhishekR3/ps-local#readme",
+  "bugs": { "url": "https://github.com/AbhishekR3/ps-local/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/AbhishekR3/ps-local.git" },
+  "keywords": ["pokemon-showdown", "electron", "battle-log", "helper-panel"],
   "engines": { "node": ">=22.6.0" },
   "scripts": {
     "setup": "node scripts/setup.js",

@@ -18,6 +18,7 @@ const tapCandidates = [
 const tapSrc = (() => {
   for (const p of tapCandidates) {
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       return fs.readFileSync(p, 'utf8')
     } catch { /* try next candidate */ }
   }

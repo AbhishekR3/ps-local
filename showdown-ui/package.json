@@ -1,9 +1,12 @@
 {
   "name": "showdown-ui",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Native Pokemon Showdown client with a docked battle helper and automatic battle-log saving.",
   "author": "Abhishek Ramesh",
+  "homepage": "https://github.com/AbhishekR3/ps-local#readme",
+  "bugs": { "url": "https://github.com/AbhishekR3/ps-local/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/AbhishekR3/ps-local.git" },
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
