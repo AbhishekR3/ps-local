@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="ps-local PMD Ruleset"
+    xmlns="https://pmd.github.io/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="https://pmd.github.io/ruleset/2.0.0 https://pmd.github.io/schemas/pmd-7.0.0.xsd">
+    <description>PMD rules for ps-local. Excludes UnnecessaryBlock — the codebase uses ES6
+    block-scoped const/let in switch cases which PMD wrongly flags as unnecessary.</description>
+
+    <rule ref="category/ecmascript/bestpractices.xml/AvoidWithStatement"/>
+    <rule ref="category/ecmascript/bestpractices.xml/ConsistentReturn"/>
+    <rule ref="category/ecmascript/bestpractices.xml/UseBaseWithParseInt"/>
+    <rule ref="category/ecmascript/codestyle.xml/AssignmentInOperand">
+        <properties>
+            <property name="allowFor" value="false"/>
+            <property name="allowIf" value="false"/>
+            <property name="allowIncrementDecrement" value="false"/>
+            <property name="allowTernary" value="false"/>
+            <property name="allowTernaryResults" value="false"/>
+            <property name="allowWhile" value="false"/>
+        </properties>
+    </rule>
+    <!-- UnnecessaryBlock intentionally excluded: switch-case blocks use { } for ES6 const/let
+         scoping. PMD 6.x flags these as redundant but they are required in modern JS. -->
+    <rule ref="category/ecmascript/errorprone.xml/EqualComparison"/>
+</ruleset>

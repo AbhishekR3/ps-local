@@ -25,11 +25,11 @@ jobs:
   build-electron:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           submodules: false # from-source build needs only helper/ + showdown-ui/, both in the main repo
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -50,7 +50,7 @@ jobs:
           xvfb-run -a env PS_SMOKE=1 npx electron . --no-sandbox 2>&1 | tee smoke.log
           grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           # Convenience artifact: the built bundles. Not standalone-runnable on its own — it needs the
           # repo's node_modules/electron — so the user-facing "from source" path stays git clone + npm start.

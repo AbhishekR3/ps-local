@@ -1,0 +1,35 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "style": {
+        "useTemplate": "off",
+        "useOptionalChain": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "noRedundantUseStrict": "off",
+        "useIterableCallbackReturn": "off"
+      },
+      "complexity": {
+        "useOptionalChain": "off",
+        "useArrowFunction": "off"
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off",
+        "noInvalidUseBeforeDeclaration": "off"
+      }
+    }
+  },
+  "files": {
+    "ignore": [
+      "vendor/**",
+      "node_modules/**",
+      "dist/**",
+      "out/**",
+      "logs/**",
+      "helper/extension/data/**"
+    ]
+  }
+}
