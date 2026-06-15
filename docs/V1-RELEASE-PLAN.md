@@ -20,14 +20,53 @@ Need to fit all of these into phases that I will need to validate at each step a
 The owner validates after every phase. Order: README (P5) is last because it must reflect the final
 badge set (P1), the portable download types (P3), and the from-source electron download.
 
-| Phase | Scope | Items / Parts | Validation gate |
-|---|---|---|---|
-| **P1** | CI greening + new `build-electron.yml` | items 2,3,4 + Part 6 | all build-* badges green; canary green via dispatch; vendor clean |
-| **P2** | Codacy grade B→A | item 5 / Part 7 | local CLI shows fewer issues / grade up; build + tests pass |
-| **P3** | Portable targets + runtime icon | Part 1 + Part 2 | `dist/` has installer **and** portable per OS; icon swap works |
-| **P4** | Lean-up | Part 3 | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
-| **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | renders on GitHub; exactly 7 badges; Downloads table complete |
-| **P6** | Docs sync + final sweep | — | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; vendor clean; suite green |
+| Phase | Scope | Items / Parts | Status | Validation gate |
+|---|---|---|---|---|
+| **P1** | CI greening + new `build-electron.yml` | items 2,3,4 + Part 6 | ✅ **DONE** — merged PR #9 | all build-* badges green; canary green via dispatch; vendor clean |
+| **P2** | Codacy grade B→A | item 5 / Part 7 | 🔄 **IN PROGRESS** — PR #10 open (`fix/codacy-grade`) | local CLI shows fewer issues / grade up; build + tests pass |
+| **P3** | Portable targets + runtime icon | Part 1 + Part 2 | ⬜ not started | `dist/` has installer **and** portable per OS; icon swap works |
+| **P4** | Lean-up | Part 3 | ⬜ not started | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
+| **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ⬜ not started | renders on GitHub; exactly 7 badges; Downloads table complete |
+| **P6** | Docs sync + final sweep | — | ⬜ not started | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; vendor clean; suite green |
+
+### P1 — DONE (2026-06-14, merged as PR #9)
+What was delivered:
+- `.github/workflows/build-linux.yml` — fixed smoke binary path (`Pokemon Showdown Battle UI` →
+  `showdown-ui`; electron-builder uses `package.json.name` for the Linux binary, not `productName`);
+  added `workflow_dispatch`.
+- `.github/workflows/build-windows.yml` — added `workflow_dispatch` only (was already passing).
+- `.github/workflows/upstream-canary.yml` — replaced `--merge` (fails on shallow checkouts with
+  "refusing to merge unrelated histories") with `git submodule sync --recursive && git submodule update
+  --remote --force --recursive`; added least-privilege `permissions: contents: read / issues: write`.
+- `.github/workflows/build-electron.yml` (new) — from-source electron-vite build + xvfb PS_SMOKE on
+  ubuntu-latest; uploads `ps-local-electron-app` artifact; path triggers match other build-* workflows.
+- `.github/workflows/test.yml` — added least-privilege `permissions: contents: read` (Checkov
+  CKV2_GHA_1).
+
+### P2 — IN PROGRESS (as of 2026-06-14, PR #10 on `fix/codacy-grade`)
+What was pushed to the branch:
+- `.jshintrc` — `esversion: 11, browser: true, node: true, loopfunc: true, undef: false` (silences 926
+  JSHint ES5 false positives)
+- `.markdownlint.json` — disables MD013 (line length) and other structural rules (silences 551
+  Markdownlint false positives)
+- `.csslintrc` — ignores `known-properties, order-alphabetical, ids, adjoining-classes, fallback-colors,
+  universal-selector, box-sizing, empty-rules, errors`
+- `.stylelintrc.json` — nulls out 7 noisy rules
+- `.remarkrc.json` — disables `remark-lint-no-undefined-references`
+- `test.yml` permissions already added in P1 (`contents: read`)
+- `upstream-canary.yml` permissions already added in P1 (`contents: read / issues: write`)
+
+**Next step for new chat:**
+1. Wait for the `codacy` workflow (run ID 27515601585) on PR #10 to complete:
+   `gh run list --branch fix/codacy-grade --workflow=codacy.yml --limit 1`
+2. Re-fetch code-scanning alerts to measure the drop:
+   `gh api -X GET repos/AbhishekR3/ps-local/code-scanning/alerts -f state=open -f per_page=100
+    --paginate | jq 'length'`
+   (Baseline before PR #10: ~1800 open alerts; 78% noise — JSHint 926 + Markdownlint 551.)
+3. If the drop is ≥ 1200 alerts (the JSHint + Markdownlint noise silenced), ask owner to confirm merge.
+4. If tools didn't honor repo configs, check Codacy dashboard → **Tools** tab to confirm each tool
+   picked up the config file (they must be in the repo root and the tool must be enabled).
+5. After merge: move to P3 (portable targets + `iconPath`).
 
 **Cross-cutting decisions locked 2026-06-14 (do not re-ask):**
 - **Codacy (Part 7): the pasted "Fix Issues" patch is corrupt — never `pbpaste | patch` it.** Many
