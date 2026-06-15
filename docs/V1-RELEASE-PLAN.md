@@ -24,9 +24,9 @@ badge set (P1), the portable download types (P3), and the from-source electron d
 |---|---|---|---|---|
 | **P1** | CI greening + new `build-electron.yml` | items 2,3,4 + Part 6 | ✅ **DONE** — merged PR #9 | all build-* badges green; canary green via dispatch; vendor clean |
 | **P2** | Codacy grade B→A | item 5 / Part 7 | ✅ **DONE** — PR #10 open (`fix/codacy-grade`), awaiting merge | >97% alert reduction (1800→~41); build + tests pass |
-| **P3** | Portable targets + runtime icon | Part 1 + Part 2 | ⬜ not started | `dist/` has installer **and** portable per OS; icon swap works |
-| **P4** | Lean-up | Part 3 | ⬜ not started | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
-| **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ⬜ not started | renders on GitHub; exactly 7 badges; Downloads table complete |
+| **P3** | Portable targets + runtime icon | Part 1 + Part 2 | ✅ **DONE** — commit `0225e2e` on `fix/codacy-grade` | `dist/` has installer **and** portable per OS; icon swap works |
+| **P4** | Lean-up | Part 3 | ✅ **DONE** — commit `0225e2e` on `fix/codacy-grade` | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
+| **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ✅ **DONE** — see below | renders on GitHub; exactly 7 badges; Downloads table complete |
 | **P6** | Docs sync + final sweep + branch protection | architecture.html→.md conversion + sync, CLAUDE.md updates, branch protection | ⬜ not started | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; `docs/architecture.md` exists and matches codebase; main branch protected; vendor clean; suite green |
 | **P7** | Auto-update mechanism | New Part 9 | ⬜ not started | Update check UI shows on boot; accept/reject/skip works; rollback UI appears on test failure; suite green; packaged-app path handled gracefully |
 | **P8** | Pre-release quality sweep | New Part 10 | ⬜ not started | `/simplify` + `/code-review` applied; `npm test` + `test:smoke` + `build` clean; Codacy no new regressions; vendor clean; only then proceed to Part 5 |
@@ -75,7 +75,7 @@ What was delivered across two commits on the branch:
 - Remark-lint (17) — `.remarkrc.json` already disables `no-undefined-references`; may require a
   Codacy dashboard toggle if the server-side tool doesn't pick up the config
 
-**Next step:** Owner merges PR #10 → move to P3 (portable targets + `iconPath`).
+**Next step:** Owner merges PR #10 → move to P3 (portable targets + `iconPath`) — now done (see below).
 
 **Cross-cutting decisions locked 2026-06-14 (do not re-ask):**
 - **Codacy (Part 7): the pasted "Fix Issues" patch is corrupt — never `pbpaste | patch` it.** Many
@@ -91,6 +91,43 @@ What was delivered across two commits on the branch:
   compile fine. The only build-breaking patch hunks are the unnarrowed `any`→`unknown` ones.
 - Per owner global rules: **every `git push` / PR / tag is owner-confirmed**; vendor submodules must stay
   git-clean (`git -C vendor/... status --porcelain` empty) after any local upstream repro.
+
+### P3 + P4 — DONE (2026-06-14, commit `0225e2e` on `fix/codacy-grade`)
+What was delivered:
+
+**Part 1 — Portable targets (`showdown-ui/electron-builder.yml`):**
+- Linux: `[AppImage, tar.gz]`
+- Windows: `[nsis, portable]`
+- macOS: `[dmg, zip]`
+
+**Part 2 — Runtime icon (`showdown-ui/electron/main/index.ts`):**
+- `iconPath?` added to `Config` interface
+- `resolveIcon()` tilde-expands path, warns on missing/unreadable, falls back to bundled icon
+- Injected into `BrowserWindow` options and `app.dock.setIcon()` (macOS)
+- Documented in `config.example.json` with `_iconPath` note
+
+**Part 3 — Lean-up:**
+- Deleted `.github/workflows/deep-test.yml` (vendor server build already in `upstream-canary.yml`)
+- Removed `test:deep` npm alias from `package.json` (was identical to `npm test`)
+- Removed `deep-test` badge and nightly paragraph from `README.md`
+- Updated CI workflow list in `CLAUDE.md` (added `build-electron.yml`, dropped `deep-test.yml`)
+- `docs/LOG-FORMAT.md`: "human/LLM-readable" → "human-readable"; dropped LLM ANALYSIS PROMPT section
+- ESLint suppression comments for `no-unsanitized/method` in `app/main.js`, `helper/build-data.js`, `scripts/build-ability-descriptions.js`
+- All 66 helper tests pass; `test:smoke` passes.
+
+### P5 — DONE (2026-06-14, on `fix/codacy-grade`)
+What was delivered:
+
+**README full rewrite (`README.md`):**
+- Exactly 7 badges in order: `test`, `build-electron app`, `build-linux`, `build-windows`, `build-macos`, `build-chromium-extension`, `Codacy Badge`. Dropped `deep-test`, `upstream-canary`, `License` badges.
+- Hero screenshot placeholder `docs/assets/panel.png` directly under the intro pitch.
+- **Downloads** table near the top covering all 5 distribution types: run-from-source, Chromium extension, macOS dmg+zip, Windows NSIS+portable, Linux AppImage+tar.gz.
+- HTML comment checklist of 3 screenshots to capture (panel, battle-view, log-sample).
+- Sections: Downloads, Quickstart (with prerequisites table), How battle logs are saved, Helper panel, Privacy, Troubleshooting, Configuration (iconPath + env vars), Updating upstream, Tests & CI, Architecture, Directory structure, Contributing, Credits, License.
+- `docs/assets/` directory created (tracked via `.gitkeep`).
+- Screenshot placeholders at top (panel), mid-page (battle-view), and bottom (log-sample).
+
+**Next step:** Owner validates the README renders correctly on GitHub, drops real screenshots into `docs/assets/`, and confirms before moving to P6.
 
 ### P6 — expanded scope
 
