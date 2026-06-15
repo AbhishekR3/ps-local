@@ -1,0 +1,174 @@
+name: release
+
+# Publishes a GitHub Release with per-OS installers + the Chromium extension zip when a v* tag is
+# pushed (e.g. `git tag v1.0.0 && git push origin v1.0.0`). The per-push build-*.yml workflows only
+# upload CI artifacts (downloadable from the Actions run); this is the only workflow that creates a
+# Release so the README's /releases/latest download links resolve. Each OS job builds, asserts the
+# artifact is real, and uploads it; the final `publish` job collects them all into one Release.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # allow a manual re-run (won't create a Release without a tag — see publish job)
+
+permissions:
+  contents: write # required for the publish job to create the Release
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+      - name: Build dmg + zip (unsigned)
+        run: cd showdown-ui && npm run dist:mac
+      - name: Assert dmg is a valid disk image
+        run: |
+          shopt -s nullglob
+          files=(showdown-ui/dist/*.dmg)
+          if [ ${#files[@]} -eq 0 ]; then echo 'No .dmg produced'; exit 1; fi
+          ls -la "${files[@]}"
+          [ -s "${files[0]}" ] || { echo 'dmg is empty'; exit 1; }
+          hdiutil imageinfo "${files[0]}" >/dev/null || { echo 'dmg is not a valid disk image'; exit 1; }
+      - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
+        run: |
+          app=$(ls -d showdown-ui/dist/mac*/*.app | head -1)
+          if [ -z "$app" ]; then echo 'No unpacked .app found'; exit 1; fi
+          bin="$app/Contents/MacOS/Pokemon Showdown Battle UI"
+          PS_SMOKE=1 "$bin" 2>&1 | tee smoke.log
+          grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: release-macos
+          path: |
+            showdown-ui/dist/*.dmg
+            showdown-ui/dist/*-mac.zip
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+      - name: Build AppImage + tar.gz
+        run: cd showdown-ui && npm run dist:linux
+      - name: Assert AppImage is a real binary
+        run: |
+          shopt -s nullglob
+          files=(showdown-ui/dist/*.AppImage)
+          if [ ${#files[@]} -eq 0 ]; then echo 'No .AppImage produced'; exit 1; fi
+          ls -la "${files[@]}"
+          [ -s "${files[0]}" ] || { echo 'AppImage is empty'; exit 1; }
+      - name: Headless launch smoke (xvfb + PS_SMOKE)
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum \
+            showdown-ui/dist/linux-unpacked/showdown-ui --no-sandbox 2>&1 | tee smoke.log
+          grep -q 'PS_SMOKE: tap source ok' smoke.log || { echo 'tap source not loaded — battle-help would be broken'; exit 1; }
+        env:
+          PS_SMOKE: '1'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: release-linux
+          path: |
+            showdown-ui/dist/*.AppImage
+            showdown-ui/dist/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: showdown-ui/package-lock.json
+      - name: Install showdown-ui deps
+        run: cd showdown-ui && npm ci
+      - name: Build NSIS installer + portable
+        run: cd showdown-ui && npm run dist:win
+      - name: Assert installer is a real PE binary
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem showdown-ui/dist/*.exe -ErrorAction SilentlyContinue
+          if (-not $files) { Write-Error 'No .exe produced'; exit 1 }
+          $files | ForEach-Object { Write-Host $_.FullName $_.Length }
+          if (($files | Where-Object { $_.Length -gt 0 }).Count -eq 0) { Write-Error 'installer is empty'; exit 1 }
+          $bytes = [System.IO.File]::ReadAllBytes($files[0].FullName)[0..1]
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { Write-Error 'installer is not a PE (MZ) binary'; exit 1 }
+      - name: Launch smoke (PS_SMOKE — proves the WebSocket tap source ships)
+        shell: pwsh
+        run: |
+          $bin = "showdown-ui/dist/win-unpacked/Pokemon Showdown Battle UI.exe"
+          if (-not (Test-Path $bin)) { Write-Error 'No unpacked .exe found'; exit 1 }
+          $env:PS_SMOKE = '1'
+          $p = Start-Process -FilePath $bin -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Write-Error "PS_SMOKE exited $($p.ExitCode) — injected.js missing, battle-help would be broken"; exit 1 }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: release-windows
+          path: |
+            showdown-ui/dist/*.exe
+          if-no-files-found: error
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          submodules: false
+      - name: Zip extension (excluding secrets)
+        run: |
+          cd helper
+          zip -r ../ps-local-extension.zip extension \
+            -x 'extension/data/config.json' -x '*.env' -x 'extension/.env' -x '*/.DS_Store'
+      - name: Leak-assert (no credentials in the zip)
+        run: |
+          if unzip -l ps-local-extension.zip | grep -qE '(data/config\.json|\.env)$'; then
+            echo 'CREDENTIAL LEAK: data/config.json or .env present in extension zip'
+            exit 1
+          fi
+          echo 'leak-assert passed — no credentials in zip'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: release-extension
+          path: ps-local-extension.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [macos, linux, windows, extension]
+    runs-on: ubuntu-latest
+    # Only publish on a real tag push — a manual workflow_dispatch builds + asserts but has no tag to release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List collected assets
+        run: ls -la artifacts
+      - name: Create / update the GitHub Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.0.8
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

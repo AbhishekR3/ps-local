@@ -4,11 +4,9 @@ All notable changes to this project will be documented in this file.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — versioning: [SemVer](https://semver.org/).
 
-<!-- Before tagging v1.0.0: fill in the release date below and complete the Fixed section. -->
-
 ## [Unreleased]
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - 2026-06-15
 
 ### Added
 
@@ -26,6 +24,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — versioning:
 - Stale-room sweep (5 min interval, 30 min idle eviction) and 100 K frame hard cap per room
 - Guard tests (CI-enforced via `helper/test/guards.test.js`): ad-block list identity across `app/main.js` ↔ `showdown-ui` main; `render.js` class CSS parity across `panel.css` ↔ `global.css`
 - Multi-OS/Node CI matrix (`ubuntu` / `macOS` / `Windows` × Node 22 / 24): smoke test, full helper suite, lint, typecheck, renderer unit tests, dependency audit, secret scan
+- `release.yml` workflow: on a `v*` tag, builds all per-OS installers + the extension zip and publishes them as a GitHub Release (macOS `.dmg`/`.zip`, Linux `AppImage`/`tar.gz`, Windows NSIS `.exe`/portable, `ps-local-extension.zip`)
 
 ### Changed
 
@@ -34,7 +33,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — versioning:
 
 ### Fixed
 
-<!-- Fill in before tagging — list bug fixes from final code updates. See BACKLOG.md for pending items. -->
+- Codacy static-analysis pass: resolved type-safety and code-pattern issues across `showdown-ui` and `app/` (removed an unsafe non-null assertion on a `Map` key, replaced `catch (e: any)` with `unknown`, dropped unnecessary optional chains and always-truthy conditionals, added a null guard for the React root element, and `void`-marked intentionally fire-and-forget promises). File-access and object-injection findings on Electron-internal paths are annotated as reviewed false positives.
+- Battle-help silently broke in the packaged macOS `.dmg` when `injected.js` (the WebSocket tap source) wasn't shipped — now asserted by the `PS_SMOKE` launch smoke in every per-OS build and release job.
 
 ---
 
