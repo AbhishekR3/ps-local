@@ -27,7 +27,9 @@ badge set (P1), the portable download types (P3), and the from-source electron d
 | **P3** | Portable targets + runtime icon | Part 1 + Part 2 | ⬜ not started | `dist/` has installer **and** portable per OS; icon swap works |
 | **P4** | Lean-up | Part 3 | ⬜ not started | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
 | **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ⬜ not started | renders on GitHub; exactly 7 badges; Downloads table complete |
-| **P6** | Docs sync + final sweep | — | ⬜ not started | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; vendor clean; suite green |
+| **P6** | Docs sync + final sweep + branch protection | architecture.html→.md conversion + sync, CLAUDE.md updates, branch protection | ⬜ not started | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; `docs/architecture.md` exists and matches codebase; main branch protected; vendor clean; suite green |
+| **P7** | Auto-update mechanism | New Part 9 | ⬜ not started | Update check UI shows on boot; accept/reject/skip works; rollback UI appears on test failure; suite green; packaged-app path handled gracefully |
+| **P8** | Pre-release quality sweep | New Part 10 | ⬜ not started | `/simplify` + `/code-review` applied; `npm test` + `test:smoke` + `build` clean; Codacy no new regressions; vendor clean; only then proceed to Part 5 |
 
 ### P1 — DONE (2026-06-14, merged as PR #9)
 What was delivered:
@@ -82,6 +84,35 @@ What was pushed to the branch:
   compile fine. The only build-breaking patch hunks are the unnarrowed `any`→`unknown` ones.
 - Per owner global rules: **every `git push` / PR / tag is owner-confirmed**; vendor submodules must stay
   git-clean (`git -C vendor/... status --porcelain` empty) after any local upstream repro.
+
+### P6 — expanded scope
+
+**Branch protection (owner action — no code):**
+GitHub → Settings → Branches → Add branch protection rule on `main`:
+- Require a pull request before merging (1 approval minimum)
+- Require status checks to pass before merging — add `test` and `build-electron` as required checks
+- Do not allow bypassing the above settings
+- Prohibit force pushes
+- Prohibit branch deletion
+
+**`docs/architecture.html` → `docs/architecture.md` conversion:**
+The existing `architecture.html` is a 1 400-line interactive graph viewer with all content embedded as JavaScript data. It is not readable on GitHub without a browser. Extract the 8 content sections from the JS `SECTIONS` object and render them as a plain Markdown file `docs/architecture.md`. Keep `architecture.html` — it remains the interactive viewer. The `.md` is the GitHub-readable companion.
+
+Eight sections to cover:
+1. Executive Summary — tech stack, two surfaces (showdown-ui + Chrome extension)
+2. Repository Structure Map — full directory tree with ownership annotations
+3. System Architecture — primary path (PS Server → injected.js → ps.ts → main → React) + extension path
+4. File Interaction Map — reference table of 25 key files (layer, line count, role, deps)
+5. Dependency Graph — module criticality observations (parser.js most-depended-upon, render.js single source, injected.js three contexts)
+6. Execution Flow Analysis — four flows: app startup, ps-frame hot path, panel resync, drag-resize
+7. Important Functions & Classes — 25 critical functions with descriptions
+8. Data Flow Mapping — live display flow + battle log archive flow
+
+**Sync `docs/architecture.md` with codebase:** After conversion, audit each section against the current code. Known drift areas: file line counts in the File Interaction Map (s4), Electron version in s1 (currently 42.4.0), function list in s7 (verify all 25 still exist with correct names/signatures). Update wherever stale. Also check if anything in `V1-RELEASE-PLAN.md` conflicts with what `architecture.md` clarifies.
+
+**Update `V1-RELEASE-PLAN.md` footnote:** Once architecture.md exists, add a reference to it from the "Critical files" section.
+
+---
 
 ## Context
 
