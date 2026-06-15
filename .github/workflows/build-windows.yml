@@ -38,7 +38,7 @@ jobs:
         run: cd showdown-ui && npm ci
 
       - name: Build NSIS installer
-        run: cd showdown-ui && npm run dist:win
+        run: cd showdown-ui && npm run dist:win -- --publish never
 
       - name: Assert installer artifact exists and is a real PE binary
         shell: pwsh

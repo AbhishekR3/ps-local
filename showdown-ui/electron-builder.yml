@@ -20,10 +20,13 @@ linux:
   target: [AppImage, tar.gz]
   category: Game
   icon: build/icon.png
+  artifactName: ${productName}.${ext}
 win:
   target: [nsis, portable]
   icon: build/icon.png
+  artifactName: ${productName} Setup.${ext}
 mac:
   target: [dmg, zip]
   category: public.app-category.games
   icon: build/icon.png
+  artifactName: ${productName}.${ext}

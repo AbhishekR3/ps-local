@@ -37,7 +37,7 @@ jobs:
         run: cd showdown-ui && npm ci
 
       - name: Build AppImage
-        run: cd showdown-ui && npm run dist:linux
+        run: cd showdown-ui && npm run dist:linux -- --publish never
 
       - name: Assert AppImage artifact exists and is a real binary
         run: |
