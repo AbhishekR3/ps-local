@@ -5,5 +5,7 @@
   "logLevel": "INFO",
   "saveLogs": true,
   "_iconPath": "Optional. Sets the live window/taskbar icon (Linux/Windows) and the macOS Dock icon at runtime. Tilde (~) is expanded. Falls back to the bundled icon if the path is missing or unreadable. Does NOT change the baked installer icon.",
-  "iconPath": "~/Documents/ps-local/my-icon.png"
+  "iconPath": "~/Documents/ps-local/my-icon.png",
+  "_checkUpdatesOnBoot": "Optional. When true, the app shows an update screen on boot that checks whether the Pokémon Showdown upstream submodules have new commits. If updates are found, you can apply them in-place and run the test suite as a verification gate; if tests fail a one-click rollback restores the prior state. Defaults to false. Only applies when running from source — packaged installs show a link to GitHub Releases instead.",
+  "checkUpdatesOnBoot": false
 }

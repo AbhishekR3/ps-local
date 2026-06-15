@@ -1,16 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './styles/global.css'
 import Battle from './routes/Battle'
+import UpdateScreen from './components/UpdateScreen'
 
 const REPO_URL = 'https://github.com/AbhishekR3/ps-local'
 
 export default function App() {
+  // null = still loading the config; false = skip update screen; true = show it.
+  const [showUpdate, setShowUpdate] = useState<boolean | null>(null)
+  const [updateComplete, setUpdateComplete] = useState(false)
+
+  useEffect(() => {
+    window.psUI.getAppConfig()
+      .then(cfg => setShowUpdate(cfg.checkUpdatesOnBoot))
+      .catch(() => setShowUpdate(false))
+  }, [])
+
   // Owns the helper-open state so the toggle can live in this header (always above the psView, which
   // would occlude a button placed over the game region). Battle reads it to collapse the panel.
   const [helperOpen, setHelperOpen] = useState(true)
   // Bumped on each Re-sync click; HelperPanel rebuilds its tracker from the frame buffer when it
   // changes. Lives here so the button stays in the always-visible header (works even when collapsed).
   const [resyncSignal, setResyncSignal] = useState(0)
+
+  // Still loading the config — render nothing to avoid a flash.
+  if (showUpdate === null) return null
+
+  // Show the update screen until the user continues/skips.
+  if (showUpdate && !updateComplete) {
+    return <UpdateScreen onDone={() => setUpdateComplete(true)} />
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

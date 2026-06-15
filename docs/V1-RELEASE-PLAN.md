@@ -28,7 +28,7 @@ badge set (P1), the portable download types (P3), and the from-source electron d
 | **P4** | Lean-up | Part 3 | ✅ **DONE** — commit `0225e2e` on `fix/codacy-grade` | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
 | **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ✅ **DONE** — see below | renders on GitHub; exactly 7 badges; Downloads table complete |
 | **P6** | Docs sync + final sweep + branch protection | architecture.html→.md conversion + sync, CLAUDE.md updates, branch protection | ✅ **DONE** — see below | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; `docs/architecture.md` exists and matches codebase; vendor clean; suite green |
-| **P7** | Auto-update mechanism | New Part 9 | ⬜ not started | Update check UI shows on boot; accept/reject/skip works; rollback UI appears on test failure; suite green; packaged-app path handled gracefully |
+| **P7** | Auto-update mechanism | New Part 9 | ✅ **DONE** — see below | Update check UI shows on boot; accept/reject/skip works; rollback UI appears on test failure; suite green; packaged-app path handled gracefully |
 | **P8** | Pre-release quality sweep | New Part 10 | ⬜ not started | `/simplify` + `/code-review` applied; `npm test` + `test:smoke` + `build` clean; Codacy no new regressions; vendor clean; only then proceed to Part 5 |
 
 ### P1 — DONE (2026-06-14, merged as PR #9)
@@ -160,6 +160,42 @@ GitHub → Settings → Branches → Add branch protection rule on `main`:
 - Require status checks to pass before merging — add `test` and `build-electron` as required checks
 - Do not allow bypassing the above settings
 - Prohibit force pushes; prohibit branch deletion
+
+### P7 — DONE (2026-06-14, on `fix/codacy-grade`)
+What was delivered:
+
+**`showdown-ui/electron/main/index.ts`:**
+- `spawn` / `spawnSync` imported from `node:child_process`
+- `Config` interface extended with `checkUpdatesOnBoot?: boolean`
+- `checkUpstreamAhead()` — async; `git fetch --quiet` (10 s timeout each) + `git rev-list HEAD..@{u} --count` on both submodule dirs
+- `captureShas()` — records current submodule HEADs before an apply so rollback is possible
+- `applyUpdate()` — async; `git submodule update --remote --force --recursive` + `node --test` gate; streams stdout/stderr via `update-apply-progress` IPC
+- `doRollback()` — `git -C vendor/... checkout <sha>` for both submodules
+- IPC handlers: `get-app-config` (returns `checkUpdatesOnBoot` flag), `update-check`, `update-apply`, `update-rollback`, `update-skip`
+
+**`showdown-ui/electron/preload/index.ts`:**
+- 6 new entries in `psUI`: `getAppConfig`, `checkUpdate`, `applyUpdate`, `rollback`, `skipUpdate`, `onUpdateProgress`
+
+**`showdown-ui/src/global.d.ts`:**
+- 6 new method signatures added to `Window['psUI']`
+
+**`showdown-ui/src/components/UpdateScreen.tsx` (new):**
+- 7 states: `checking`, `packaged-update`, `error`, `up-to-date`, `update-available`, `applying`, `result-success`, `result-fail`
+- Uses existing CSS custom properties; no new stylesheet
+- Packaged-update state links to GitHub Releases
+- Result-fail state shows last 50 lines of test output + "Roll back" / "Keep & continue" buttons
+
+**`showdown-ui/src/App.tsx`:**
+- Calls `window.psUI.getAppConfig()` on mount to read `checkUpdatesOnBoot`
+- Renders `null` while config is loading (no flash)
+- Renders `<UpdateScreen>` when `checkUpdatesOnBoot === true` and user has not yet completed the flow
+- Main UI (header + Battle) only renders after update flow completes or is skipped
+
+**`config.example.json`:** `_checkUpdatesOnBoot` doc comment + `"checkUpdatesOnBoot": false` entry.
+**Root `CLAUDE.md`:** `checkUpdatesOnBoot` documented in Runtime env flags.
+**`showdown-ui/CLAUDE.md`:** `checkUpdatesOnBoot` documented in Config section.
+
+**Validation:** 66 helper tests pass; `electron-vite build` clean; guards.test.js passes (IPC channel sync check).
 
 ### P6 — expanded scope (original description preserved below)
 

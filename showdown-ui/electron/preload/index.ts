@@ -51,4 +51,22 @@ contextBridge.exposeInMainWorld('psUI', {
     return () => ipcRenderer.removeListener('ps-status', handler)
   },
   reloadPS: () => ipcRenderer.send('reload-ps'),
+
+  // ── App config + auto-update ──────────────────────────────────────────────
+  getAppConfig: (): Promise<{ checkUpdatesOnBoot: boolean }> => ipcRenderer.invoke('get-app-config'),
+
+  checkUpdate: (): Promise<{ packaged?: boolean; upToDate?: boolean; ahead?: { ps: number; client: number }; error?: string }> =>
+    ipcRenderer.invoke('update-check'),
+
+  applyUpdate: (): Promise<{ success: boolean; testOutput: string }> => ipcRenderer.invoke('update-apply'),
+
+  rollback: (): Promise<{ success: boolean }> => ipcRenderer.invoke('update-rollback'),
+
+  skipUpdate: () => ipcRenderer.send('update-skip'),
+
+  onUpdateProgress: (cb: (step: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, { step }: { step: string }) => cb(step)
+    ipcRenderer.on('update-apply-progress', handler)
+    return () => ipcRenderer.removeListener('update-apply-progress', handler)
+  },
 })

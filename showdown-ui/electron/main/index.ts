@@ -2,6 +2,7 @@ import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, n
 import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { homedir } from 'os'
+import { spawn, spawnSync } from 'node:child_process'
 import { BattleTracker } from '../../../helper/extension/lib/parser.js'
 import { generateBattleLog } from '../../../helper/extension/lib/exporter.js'
 import { roomidOf, battleLogFilename, battleEndReason } from '../../../helper/extension/lib/logmeta.js'
@@ -21,7 +22,7 @@ const REPO_URL  = 'https://github.com/AbhishekR3/ps-local'
 // ── Config ────────────────────────────────────────────────────────────────────
 // config.json at the repo root (gitignored; config.example.json is the committed template).
 // Env var PS_LOG_LEVEL and PS_TIMEZONE still win over the file.
-interface Config { timezone: string; logLevel: string; saveLogs: boolean; iconPath?: string }
+interface Config { timezone: string; logLevel: string; saveLogs: boolean; iconPath?: string; checkUpdatesOnBoot?: boolean }
 let _configWarning: string | null = null
 function loadConfig(): Config {
   const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
@@ -336,6 +337,105 @@ ipcMain.on('reload-ps', () => {
   pushStatus()
   psView?.webContents.reload()
 })
+
+// ── Auto-update helpers ───────────────────────────────────────────────────────
+// Check how many commits each submodule is behind its upstream remote.
+// git fetch has a 10 s timeout; if either fetch times out the whole check throws.
+async function checkUpstreamAhead(): Promise<{ ps: number; client: number }> {
+  const FETCH_TIMEOUT = 10_000
+
+  function fetchSub(cwd: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const child = spawn('git', ['fetch', '--quiet'], { cwd })
+      const t = setTimeout(() => { child.kill(); reject(new Error('git fetch timed out')) }, FETCH_TIMEOUT)
+      child.on('close', code => {
+        clearTimeout(t)
+        code === 0 ? resolve() : reject(new Error(`git fetch exit ${code}`))
+      })
+    })
+  }
+
+  function countAhead(cwd: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      let out = ''
+      const child = spawn('git', ['rev-list', 'HEAD..@{u}', '--count'], { cwd })
+      child.stdout.on('data', (d: Buffer) => { out += d.toString() })
+      child.on('close', code =>
+        code === 0 ? resolve(parseInt(out.trim(), 10) || 0) : reject(new Error(`rev-list exit ${code}`))
+      )
+    })
+  }
+
+  const psDir  = join(REPO_ROOT, 'vendor', 'pokemon-showdown')
+  const cliDir = join(REPO_ROOT, 'vendor', 'pokemon-showdown-client')
+  await Promise.all([fetchSub(psDir), fetchSub(cliDir)])
+  const [ps, client] = await Promise.all([countAhead(psDir), countAhead(cliDir)])
+  return { ps, client }
+}
+
+// SHAs captured before an apply so rollback() can restore them.
+let _preUpdateShas: { ps: string; client: string } | null = null
+
+function captureShas(): { ps: string; client: string } {
+  function sha(cwd: string): string {
+    const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' })
+    return (r.stdout || '').trim()
+  }
+  return {
+    ps:     sha(join(REPO_ROOT, 'vendor', 'pokemon-showdown')),
+    client: sha(join(REPO_ROOT, 'vendor', 'pokemon-showdown-client')),
+  }
+}
+
+async function applyUpdate(onProgress: (step: string) => void): Promise<{ success: boolean; testOutput: string }> {
+  _preUpdateShas = captureShas()
+  return new Promise(resolve => {
+    let out = ''
+    // Same flags as upstream-canary.yml — avoids "refusing to merge unrelated histories" on shallow clones.
+    const child = spawn('git', ['submodule', 'update', '--remote', '--force', '--recursive'], { cwd: REPO_ROOT })
+    child.stdout.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
+    child.stderr.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
+    child.on('close', code => {
+      if (code !== 0) return resolve({ success: false, testOutput: out })
+      onProgress('Running npm test…\n')
+      const test = spawn('node', ['--test'], { cwd: join(REPO_ROOT, 'helper') })
+      test.stdout.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
+      test.stderr.on('data', (d: Buffer) => { const s = d.toString(); out += s; onProgress(s) })
+      test.on('close', tcode => resolve({ success: tcode === 0, testOutput: out }))
+    })
+  })
+}
+
+async function doRollback(): Promise<{ success: boolean }> {
+  if (!_preUpdateShas) return { success: false }
+  const { ps, client } = _preUpdateShas
+  const r1 = spawnSync('git', ['-C', join(REPO_ROOT, 'vendor', 'pokemon-showdown'), 'checkout', ps])
+  const r2 = spawnSync('git', ['-C', join(REPO_ROOT, 'vendor', 'pokemon-showdown-client'), 'checkout', client])
+  return { success: r1.status === 0 && r2.status === 0 }
+}
+
+// ── IPC: auto-update ──────────────────────────────────────────────────────────
+ipcMain.handle('get-app-config', () => ({ checkUpdatesOnBoot: config.checkUpdatesOnBoot ?? false }))
+
+ipcMain.handle('update-check', async () => {
+  if (app.isPackaged) return { packaged: true }
+  try {
+    const ahead = await checkUpstreamAhead()
+    return { upToDate: ahead.ps === 0 && ahead.client === 0, ahead }
+  } catch (e: unknown) {
+    return { error: (e as Error).message }
+  }
+})
+
+ipcMain.handle('update-apply', () => {
+  const onProgress = (step: string) => mainWindow?.webContents.send('update-apply-progress', { step })
+  return applyUpdate(onProgress)
+})
+
+ipcMain.handle('update-rollback', () => doRollback())
+
+// Renderer-driven state transition; no action needed in main.
+ipcMain.on('update-skip', () => { /* renderer owns the transition */ })
 
 // ── ad / analytics block (live psView only) ───────────────────────────────────
 // psView wraps the LIVE play.pokemonshowdown.com client (partition 'persist:showdown-ui'), which

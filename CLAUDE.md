@@ -60,6 +60,7 @@ cd helper && node build-data.js
   path with no server/window/extension, write the log, quit. The C5 decoupling proof for CI.
 - `PS_NO_EXTENSION=1` — (`app/` only) skip `loadExtension`
 - `PS_SMOKE=1` — (`showdown-ui` only) boot, log "PS_SMOKE: boot ok", and exit 0. Used by the Linux CI launch smoke to prove the packaged app launches without running a full battle.
+- `config.json` `checkUpdatesOnBoot` — (`showdown-ui` only) when `true`, shows an `UpdateScreen` on boot that fetches upstream commit counts for both PS submodules; the user can apply the update in-place (runs `git submodule update --remote --force --recursive` + `node --test` as a gate) and roll back if tests fail. Defaults to `false`. Packaged installs show a GitHub Releases link instead.
 
 ### Environment gotchas
 - **Node ≥ 22.6 is required** — `helper/build-data.js` imports `.ts` files via Node type-stripping;

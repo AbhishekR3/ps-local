@@ -24,6 +24,12 @@ declare global {
       getStatus: () => Promise<PsStatus>
       onStatus:  (cb: (s: PsStatus) => void) => () => void
       reloadPS:  () => void
+      getAppConfig: () => Promise<{ checkUpdatesOnBoot: boolean }>
+      checkUpdate: () => Promise<{ packaged?: boolean; upToDate?: boolean; ahead?: { ps: number; client: number }; error?: string }>
+      applyUpdate: () => Promise<{ success: boolean; testOutput: string }>
+      rollback: () => Promise<{ success: boolean }>
+      skipUpdate: () => void
+      onUpdateProgress: (cb: (step: string) => void) => () => void
     }
   }
 }
