@@ -1,7 +1,6 @@
 # ps-local
 
 [![test](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/test.yml)
-[![deep-test](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/deep-test.yml)
 [![build-linux](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-linux.yml)
 [![build-windows](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-windows.yml)
 [![build-macos](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AbhishekR3/ps-local/actions/workflows/build-macos.yml)
@@ -132,10 +131,7 @@ gate, mirrored locally and in CI:
 | `npm run test:smoke` | One fixture battle → parser → exporter; asserts section anchors. Fast. | `test.yml` — every push/PR |
 | `cd helper && node --test test/parser.test.js` | A single test file. | — |
 
-The nightly `deep-test.yml` workflow runs the same helper suite, then additionally builds the bundled PS
-server and launches the legacy Electron app (`app/`) in `PS_SYNTHETIC` mode to prove the end-to-end
-logging path (the C5 decoupling proof). If you intentionally change exporter formatting, refresh the
-golden: `node helper/test/golden.test.js --update`.
+If you intentionally change exporter formatting, refresh the golden: `node helper/test/golden.test.js --update`.
 
 **Build CI** — the three build workflows run on `showdown-ui/` or `helper/extension/` path changes:
 

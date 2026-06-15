@@ -86,7 +86,9 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;  // how often the stale-room sweep runs
 // ---------------------------------------------------------------------------- helper libs / data
 
 async function loadHelperLibs() {
+  // eslint-disable-next-line no-unsanitized/method -- Electron main process; no DOM
   const parser = await import(pathToFileURL(path.join(repoRoot, 'helper', 'extension', 'lib', 'parser.js')).href);
+  // eslint-disable-next-line no-unsanitized/method -- Electron main process; no DOM
   const exporter = await import(pathToFileURL(path.join(repoRoot, 'helper', 'extension', 'lib', 'exporter.js')).href);
   BattleTracker = parser.BattleTracker;
   generateBattleLog = exporter.generateBattleLog;

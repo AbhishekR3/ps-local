@@ -16,7 +16,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', 'vendor', 'pokemon-showdown');
 const OUT = join(HERE, '..', 'helper', 'extension', 'data', 'abilities-desc.json');
 
+// eslint-disable-next-line no-unsanitized/method -- Node build script; no DOM
 const { AbilitiesText } = await import(join(REPO, 'data', 'text', 'abilities.ts'));
+// eslint-disable-next-line no-unsanitized/method -- Node build script; no DOM
 const { Abilities } = await import(join(REPO, 'data', 'abilities.ts'));
 
 // Last-resort name when neither table carries one — turns an id into "Magicguard" (no spaces, but

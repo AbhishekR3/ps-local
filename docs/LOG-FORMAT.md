@@ -4,7 +4,7 @@ Each finished battle writes one file to `logs/`:
 
 | File | Contents |
 |---|---|
-| `<roomid>_<RESULT>_vs_<opponent>_<timestamp>.txt` | rich, human/LLM-readable analysis |
+| `<roomid>_<RESULT>_vs_<opponent>_<timestamp>.txt` | rich, human-readable analysis |
 
 The verbatim PS protocol frames are embedded in the rich `.txt` itself (the **RAW PROTOCOL** section
 below), so the file is self-contained — no separate `.raw.txt` is written.
@@ -36,7 +36,6 @@ Produced by `generateBattleLog(state, rawFrames, movesData)` in
    otherwise bare move ids are shown.
 6. **RAW PROTOCOL (complete reference — all WebSocket frames)** — the decoded SockJS frames,
    embedded for a self-contained file.
-7. **LLM ANALYSIS PROMPT** — a ready-to-paste prompt for asking an LLM to analyze the game.
 
 Move annotations come from `helper/extension/data/moves.json`, loaded once by the Electron main
 process. If that file is missing the rich log still renders, just with bare move ids.

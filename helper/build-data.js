@@ -35,6 +35,7 @@ mkdirSync(OUT_MOVES_FREQ, { recursive: true });
 mkdirSync(OUT_STATS, { recursive: true });
 
 // --- Pokedex: keep only what the breakdown UI needs ---------------------------
+// eslint-disable-next-line no-unsanitized/method -- Node build script; no DOM
 const { Pokedex } = await import(join(REPO, 'data', 'pokedex.ts'));
 const pokedex = {};
 for (const id in Pokedex) {
@@ -55,6 +56,7 @@ writeFileSync(join(OUT, 'pokedex.json'), JSON.stringify(pokedex));
 console.log(`pokedex.json: ${Object.keys(pokedex).length} species`);
 
 // --- Moves: per-move display info for the predicted movepool ------------------
+// eslint-disable-next-line no-unsanitized/method -- Node build script; no DOM
 const { Moves } = await import(join(REPO, 'data', 'moves.ts'));
 const moves = {};
 for (const id in Moves) {
@@ -119,6 +121,7 @@ function keyToFormat(key) {
 	return { gen, isDoubles, format: `gen${gen}random${isDoubles ? 'doubles' : ''}battle` };
 }
 
+// eslint-disable-next-line no-unsanitized/method -- Node build script; no DOM
 const teamsMod = await import(join(REPO, 'dist', 'sim', 'teams.js'));
 const Teams = teamsMod.Teams || teamsMod.default?.Teams;
 if (!Teams?.getGenerator) {

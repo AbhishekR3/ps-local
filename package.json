@@ -13,7 +13,6 @@
     "build:ability-desc": "node scripts/build-ability-descriptions.js",
     "test": "cd helper && node --test",
     "test:smoke": "node helper/test/smoke.mjs",
-    "test:deep": "cd helper && node --test",
     "setup:ui": "cd showdown-ui && npm install",
     "build:ui": "cd showdown-ui && npm run build",
     "dist:ui": "cd showdown-ui && npm run dist",

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen } from 'electron'
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage } from 'electron'
 import { join } from 'path'
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync, existsSync } from 'fs'
+import { homedir } from 'os'
 import { BattleTracker } from '../../../helper/extension/lib/parser.js'
 import { generateBattleLog } from '../../../helper/extension/lib/exporter.js'
 import { roomidOf, battleLogFilename, battleEndReason } from '../../../helper/extension/lib/logmeta.js'
@@ -20,7 +21,7 @@ const REPO_URL  = 'https://github.com/AbhishekR3/ps-local'
 // ── Config ────────────────────────────────────────────────────────────────────
 // config.json at the repo root (gitignored; config.example.json is the committed template).
 // Env var PS_LOG_LEVEL and PS_TIMEZONE still win over the file.
-interface Config { timezone: string; logLevel: string; saveLogs: boolean }
+interface Config { timezone: string; logLevel: string; saveLogs: boolean; iconPath?: string }
 let _configWarning: string | null = null
 function loadConfig(): Config {
   const defaults: Config = { timezone: 'UTC', logLevel: 'INFO', saveLogs: true }
@@ -94,6 +95,17 @@ const log  = createLogger('ui-main')
 const wlog = createLogger('ui-wlog')
 
 if (_configWarning) log.warn(_configWarning)
+
+// Resolve config.iconPath → a nativeImage for the window/taskbar (Linux/Windows) and macOS Dock.
+// Tilde-expands ~; missing/unreadable files warn and fall back to the bundled icon.
+function resolveIcon(p: string | undefined): Electron.NativeImage | undefined {
+  if (!p) return undefined
+  const expanded = p.startsWith('~') ? join(homedir(), p.slice(1)) : p
+  if (!existsSync(expanded)) { log.warn(`iconPath not found: ${expanded} — using default icon`); return undefined }
+  const img = nativeImage.createFromPath(expanded)
+  if (img.isEmpty()) { log.warn(`iconPath unreadable as image: ${expanded} — using default icon`); return undefined }
+  return img
+}
 
 // ── Move metadata (read once at ready; optional — rich logs degrade to bare ids without it) ──
 let movesData: Record<string, any> = {}
@@ -416,6 +428,7 @@ function createWindow(): void {
   // Open at the full size of the screen's work area (menu bar / dock excluded) as an ordinary,
   // movable window — not true fullscreen (no separate Space / hidden chrome on macOS).
   const { workArea } = screen.getPrimaryDisplay()
+  const windowIcon = resolveIcon(config.iconPath)
   mainWindow = new BrowserWindow({
     x:      workArea.x,
     y:      workArea.y,
@@ -423,6 +436,7 @@ function createWindow(): void {
     height: workArea.height,
     backgroundColor: '#1a1a2e',
     title: 'Pokemon Showdown Battle UI',
+    ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload:          join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -430,6 +444,8 @@ function createWindow(): void {
       sandbox:          false,
     },
   })
+
+  if (windowIcon && process.platform === 'darwin') app.dock?.setIcon(windowIcon)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

@@ -3,5 +3,7 @@
   "_credentials": "Nothing credential-related is configured here. In official mode you log in through the live client UI and Electron persists the session automatically (default session, disk-backed) across restarts. In local mode (PS_SERVER=local) the app reads a testclient sid from ~/Documents/pokemon-showdown-client/config/testclient-key.js (override path with PS_TESTCLIENT_KEY_PATH). There is no password or token to put in this file.",
   "timezone": "America/Los_Angeles",
   "logLevel": "INFO",
-  "saveLogs": true
+  "saveLogs": true,
+  "_iconPath": "Optional. Sets the live window/taskbar icon (Linux/Windows) and the macOS Dock icon at runtime. Tilde (~) is expanded. Falls back to the bundled icon if the path is missing or unreadable. Does NOT change the baked installer icon.",
+  "iconPath": "~/Documents/ps-local/my-icon.png"
 }

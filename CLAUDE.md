@@ -228,8 +228,8 @@ feature parity for all official-mode functionality:
 WebSocket tap + pure libs (parser, exporter, lookup) + data bundle + tests · `app/` = legacy Electron
 app (local-mode sandbox + `PS_SYNTHETIC=1` CI path) · `overlay/` + `scripts/apply-overlay.js` =
 config overlays · `scripts/` = orchestration + root `package.json` scripts · `.github/workflows/` = CI
-(`test.yml`, `deep-test.yml`, `upstream-canary.yml`, `codacy.yml`, `build-linux.yml`, `build-windows.yml`,
-`build-macos.yml`, `build-extension.yml`) · `docs/` = docs. Full design rationale and contracts
+(`test.yml`, `upstream-canary.yml`, `codacy.yml`, `build-linux.yml`, `build-windows.yml`,
+`build-macos.yml`, `build-electron.yml`, `build-extension.yml`) · `docs/` = docs. Full design rationale and contracts
 (C1–C7 + C-tap) are in `PS-LOCAL-EXTRACTION-GUIDE.md`; [docs/architecture.html](docs/architecture.html)
 is a generated 16-section architecture reference (the guard tests cite its §13 / §16).
 
