@@ -622,6 +622,46 @@ Five states, rendered in sequence:
 - `package.json` (×4) — version bump + metadata (Part 5)
 - New: `CHANGELOG.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.nvmrc`, `.editorconfig`,
   `.github/PULL_REQUEST_TEMPLATE.md`
+- Part 9 (new): `showdown-ui/electron/main/index.ts` (IPC handlers + update functions),
+  `showdown-ui/src/components/UpdateScreen.tsx` (new), `showdown-ui/src/App.tsx` (update gate),
+  `showdown-ui/electron/preload/index.ts` (contextBridge exposure), `config.example.json`
+- Part 10 (P8 sweep): no new files — commands only
+
+---
+
+## Part 10 — Pre-release quality sweep (Phase P8)
+
+Run after all feature work (P7) is complete and validated, before cutting the v1.0.0 tag. The goal is zero new issues introduced during feature development; this is not a deep audit.
+
+### Commands to run (in order)
+
+| Step | Command | Purpose |
+|---|---|---|
+| 1 | `npm test` | All helper suites (parser / exporter / golden / edge / guards / render) |
+| 2 | `npm run test:smoke` | Fast protocol gate |
+| 3 | `cd showdown-ui && npm run build` | TypeScript compile clean for main + preload + renderer |
+| 4 | `/simplify` (Claude Code skill) | Reuse / simplification / efficiency cleanup on all changed code since P2 |
+| 5 | `/code-review high` (Claude Code skill) | Correctness bugs + cleanups on the full diff vs `main`; use `--fix` for low-risk auto-apply |
+| 6 | Re-run steps 1–3 | Confirm no regressions from `/simplify` + `/code-review --fix` |
+| 7 | `bash .codacy/cli.sh analyze` | Final Codacy check — no new regressions vs the grade achieved in P2 |
+| 8 | `git -C vendor/pokemon-showdown status --porcelain` | Vendor invariant — must be empty |
+| 9 | `git -C vendor/pokemon-showdown-client status --porcelain` | Same |
+
+### Notes on the Claude Code skills
+
+- **`/simplify`** — focuses on reuse, simplification, efficiency, and altitude cleanups only. It does not hunt for bugs; that is `/code-review`'s job.
+- **`/code-review high`** — high effort gives broader coverage including uncertain findings. At `max` effort it goes deeper but takes longer. Start at `high`; escalate to `max` if the diff is large.
+- **`/code-review --fix`** — auto-applies low-risk findings directly to the working tree. Re-run the test suite immediately after, before committing.
+- Run both skills on the **full branch diff vs `main`**, not just the most recent commit. If in doubt about scope, pass the range explicitly or run from a clean branch.
+
+### Validation gate
+
+All of the following must be true before proceeding to Part 5 (v1.0.0 tag + release automation):
+- Steps 1–3 pass with zero errors
+- `/code-review` findings are either fixed or explicitly deferred with a rationale note
+- Codacy shows no new issue categories vs the P2 baseline
+- Both vendor status checks return empty output
+- Owner has reviewed and confirmed the sweep is complete
 
 ---
 
