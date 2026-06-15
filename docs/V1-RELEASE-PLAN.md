@@ -27,7 +27,7 @@ badge set (P1), the portable download types (P3), and the from-source electron d
 | **P3** | Portable targets + runtime icon | Part 1 + Part 2 | ✅ **DONE** — commit `0225e2e` on `fix/codacy-grade` | `dist/` has installer **and** portable per OS; icon swap works |
 | **P4** | Lean-up | Part 3 | ✅ **DONE** — commit `0225e2e` on `fix/codacy-grade` | `npm test`/`test:smoke` pass; no `deep-test.yml`; LLM docs scrubbed |
 | **P5** | README full rewrite + screenshots | item 1 / Part 8 + Part 4 | ✅ **DONE** — see below | renders on GitHub; exactly 7 badges; Downloads table complete |
-| **P6** | Docs sync + final sweep + branch protection | architecture.html→.md conversion + sync, CLAUDE.md updates, branch protection | ⬜ not started | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; `docs/architecture.md` exists and matches codebase; main branch protected; vendor clean; suite green |
+| **P6** | Docs sync + final sweep + branch protection | architecture.html→.md conversion + sync, CLAUDE.md updates, branch protection | ✅ **DONE** — see below | `CLAUDE.md`/`showdown-ui/CLAUDE.md` updated; `docs/architecture.md` exists and matches codebase; vendor clean; suite green |
 | **P7** | Auto-update mechanism | New Part 9 | ⬜ not started | Update check UI shows on boot; accept/reject/skip works; rollback UI appears on test failure; suite green; packaged-app path handled gracefully |
 | **P8** | Pre-release quality sweep | New Part 10 | ⬜ not started | `/simplify` + `/code-review` applied; `npm test` + `test:smoke` + `build` clean; Codacy no new regressions; vendor clean; only then proceed to Part 5 |
 
@@ -129,7 +129,39 @@ What was delivered:
 
 **Next step:** Owner validates the README renders correctly on GitHub, drops real screenshots into `docs/assets/`, and confirms before moving to P6.
 
-### P6 — expanded scope
+### P6 — DONE (2026-06-14, on `fix/codacy-grade`)
+What was delivered:
+
+**`docs/architecture.md` (new):**
+- Extracted all 16 sections from the JS `SECTIONS` object in `architecture.html` and rendered as
+  plain Markdown (GitHub-readable companion to the interactive viewer).
+- Audited every stale field against the current codebase: line counts in §4 File Interaction Map
+  updated to actuals (index.ts: 559, app/main.js: 666, ps.ts: 78, index.ts preload: 54, App.tsx: 61,
+  Battle.tsx: 137, HelperPanel.tsx: 215, render.ts: 19, data.ts: 56, render.js: 370, injected.js: 83,
+  panel.js: 143, content.js: 349, background.js: 109, logger.js: 46, scripts/lib/logger.js: 61,
+  apply-overlay.js: 26).
+- CI workflow list in §2 corrected: `deep-test.yml` removed, `build-electron.yml` added.
+- §9 Storage/config schema updated with `iconPath` (added in P3).
+- §10 electron-builder targets updated with portable entries (added in P3).
+- §13 Risk Assessment updated: `guards.test.js` CI enforcement noted for ad-block list and CSS sync.
+- §16 Gotchas #12 updated: guards.test.js asserts port invariant.
+
+**`CLAUDE.md` (root) updates:**
+- CI workflow list updated: `deep-test.yml` removed, `build-electron.yml` added.
+- `docs/architecture.md` reference added to Directory ownership section.
+
+**`showdown-ui/CLAUDE.md` updates:**
+- Packaging section updated: portable targets (tar.gz, portable.exe, zip) documented.
+- `iconPath` config key documented in Config section.
+
+**Branch protection (owner action — not code, not done yet):**
+GitHub → Settings → Branches → Add branch protection rule on `main`:
+- Require a pull request before merging (1 approval minimum)
+- Require status checks to pass before merging — add `test` and `build-electron` as required checks
+- Do not allow bypassing the above settings
+- Prohibit force pushes; prohibit branch deletion
+
+### P6 — expanded scope (original description preserved below)
 
 **Branch protection (owner action — no code):**
 GitHub → Settings → Branches → Add branch protection rule on `main`:
@@ -654,6 +686,9 @@ Five states, rendered in sequence:
 
 ## Critical files
 
+- `docs/architecture.md` (new, P6) — GitHub-readable companion to `docs/architecture.html`; 16-section
+  architecture reference audited against the current codebase. The guard tests (`helper/test/guards.test.js`)
+  cite its §13 / §16.
 - `.github/workflows/build-electron.yml` (new), `build-linux.yml`/`build-windows.yml` (+`workflow_dispatch`),
   `upstream-canary.yml` (re-green) — Part 6
 - `showdown-ui/electron-builder.yml` — portable targets (Part 1)
