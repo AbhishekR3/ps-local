@@ -5,15 +5,15 @@ import UpdateScreen from './components/UpdateScreen'
 
 const REPO_URL = 'https://github.com/AbhishekR3/ps-local'
 
+type BootState = 'loading' | 'update' | 'ready'
+
 export default function App() {
-  // null = still loading the config; false = skip update screen; true = show it.
-  const [showUpdate, setShowUpdate] = useState<boolean | null>(null)
-  const [updateComplete, setUpdateComplete] = useState(false)
+  const [bootState, setBootState] = useState<BootState>('loading')
 
   useEffect(() => {
     window.psUI.getAppConfig()
-      .then(cfg => setShowUpdate(cfg.checkUpdatesOnBoot))
-      .catch(() => setShowUpdate(false))
+      .then(cfg => setBootState(cfg.checkUpdatesOnBoot ? 'update' : 'ready'))
+      .catch(() => setBootState('ready'))
   }, [])
 
   // Owns the helper-open state so the toggle can live in this header (always above the psView, which
@@ -23,13 +23,8 @@ export default function App() {
   // changes. Lives here so the button stays in the always-visible header (works even when collapsed).
   const [resyncSignal, setResyncSignal] = useState(0)
 
-  // Still loading the config — render nothing to avoid a flash.
-  if (showUpdate === null) return null
-
-  // Show the update screen until the user continues/skips.
-  if (showUpdate && !updateComplete) {
-    return <UpdateScreen onDone={() => setUpdateComplete(true)} />
-  }
+  if (bootState === 'loading') return null
+  if (bootState === 'update') return <UpdateScreen onDone={() => setBootState('ready')} />
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

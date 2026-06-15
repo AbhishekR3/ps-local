@@ -18,16 +18,12 @@ export function sanitize(name) {
 }
 
 // Build the battle-log base filename (without extension). ts is passed in (not Date.now()) so the
-// result is deterministic and testable. Scheme: <roomid>_[SPEC_]<p1>_vs_<p2>_<RESULT>_<ts>.
+// result is deterministic and testable. Scheme: <ts>_<roomid>_[SPEC_]<p1>_vs_<p2>.
 export function battleLogFilename(roomid, state, ts) {
 	const p1 = sanitize(state.players?.p1?.name);
 	const p2 = sanitize(state.players?.p2?.name);
-	let resultToken;
-	if (!state.ended) resultToken = 'INPROGRESS';
-	else if (!state.winner) resultToken = 'TIE';
-	else resultToken = `WIN_${sanitize(state.winner)}`;
 	const prefix = state.mySide ? '' : 'SPEC_';
-	return `${roomid}_${prefix}${p1}_vs_${p2}_${resultToken}_${ts}`;
+	return `${ts}_${roomid}_${prefix}${p1}_vs_${p2}`;
 }
 
 // Decide whether a frame ends the battle (→ flush + write the log). |win|/|tie| always end it;

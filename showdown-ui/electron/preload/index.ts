@@ -62,8 +62,6 @@ contextBridge.exposeInMainWorld('psUI', {
 
   rollback: (): Promise<{ success: boolean }> => ipcRenderer.invoke('update-rollback'),
 
-  skipUpdate: () => ipcRenderer.send('update-skip'),
-
   onUpdateProgress: (cb: (step: string) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, { step }: { step: string }) => cb(step)
     ipcRenderer.on('update-apply-progress', handler)

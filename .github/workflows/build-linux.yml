@@ -39,13 +39,17 @@ jobs:
       - name: Build AppImage
         run: cd showdown-ui && npm run dist:linux
 
-      - name: Assert AppImage artifact exists
+      - name: Assert AppImage artifact exists and is a real binary
         run: |
           shopt -s nullglob
           files=(showdown-ui/dist/*.AppImage)
           if [ ${#files[@]} -eq 0 ]; then echo 'No .AppImage produced'; exit 1; fi
           ls -la "${files[@]}"
           [ -s "${files[0]}" ] || { echo 'AppImage is empty'; exit 1; }
+          # Beyond non-empty: confirm it's an actual ELF executable, not a truncated/HTML error page that
+          # happened to land at the path with a non-zero size.
+          file "${files[0]}"
+          file "${files[0]}" | grep -q 'ELF' || { echo 'AppImage is not an ELF binary'; exit 1; }
 
       - name: Headless launch smoke (xvfb + PS_SMOKE)
         # The Linux unpacked binary is named after package.json `name` ("showdown-ui") — NOT the

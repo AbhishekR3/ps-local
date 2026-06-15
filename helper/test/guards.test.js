@@ -110,3 +110,97 @@ test('injected.js posts to the page origin, not the "*" wildcard', () => {
   assert.doesNotMatch(src, /postMessage\([^)]*,\s*['"]\*['"]\s*\)/,
     'injected.js posts to "*" — security regression, target window.location.origin instead');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P7 on-boot upstream update flow (feat: apply + rollback UI). Same silent-divergence philosophy:
+// the apply path, its IPC surface, the config key, and the UI state machine are wired by hand across
+// index.ts / upstream-canary.yml / the preloads / config.example.json / UpdateScreen.tsx. Guard the
+// seams so a one-sided edit fails CI instead of shipping a dead update button or a skipped test gate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── The in-app apply (index.ts applyUpdate) and the canary CI both bump submodules. index.ts pins the
+// exact flags with a comment promising they match upstream-canary.yml ("avoids 'refusing to merge
+// unrelated histories' on shallow clones"). Assert the flag set is identical so a future change to one
+// side can't silently diverge the apply behavior from the CI that validates it. ──
+test('submodule-update flags match between index.ts applyUpdate and upstream-canary.yml', () => {
+  // index.ts spawns it as an argv array: ['git','submodule','update','--remote','--force','--recursive'].
+  const mainFlags = (src) => {
+    const m = src.match(/\[\s*'git'\s*,\s*'submodule'\s*,\s*'update'\s*,([^\]]*)\]/);
+    assert.ok(m, "could not locate the git-submodule-update argv array in index.ts");
+    return new Set([...m[1].matchAll(/'(--[a-z-]+)'/g)].map((x) => x[1]));
+  };
+  // upstream-canary.yml runs it as a shell line: git submodule update --remote --force --recursive.
+  const ymlFlags = (src) => {
+    const m = src.match(/git submodule update((?:\s+--[a-z-]+)+)/);
+    assert.ok(m, "could not locate the git submodule update line in upstream-canary.yml");
+    return new Set([...m[1].matchAll(/(--[a-z-]+)/g)].map((x) => x[1]));
+  };
+  const main = mainFlags(read('showdown-ui/electron/main/index.ts'));
+  const yml = ymlFlags(read('.github/workflows/upstream-canary.yml'));
+  assert.ok(main.size >= 3, 'expected at least --remote --force --recursive');
+  assert.deepEqual([...main].sort(), [...yml].sort(),
+    'submodule-update flags diverged between index.ts and upstream-canary.yml — update BOTH');
+});
+
+// ── applyUpdate MUST run the helper test suite as a gate AFTER pulling new commits and BEFORE
+// returning success — that gate is the whole safety story (failure surfaces the rollback UI). Guard
+// that the apply path can never be edited to skip it. ──
+test('applyUpdate gates on node --test before reporting success', () => {
+  const src = read('showdown-ui/electron/main/index.ts');
+  const fn = src.slice(src.indexOf('async function applyUpdate'), src.indexOf('async function doRollback'));
+  assert.ok(fn.length > 0, 'could not isolate applyUpdate()');
+  assert.match(fn, /\[\s*'node'\s*,\s*'--test'\s*\]/,
+    'applyUpdate no longer runs node --test — the upstream-apply test gate was removed');
+  // The success return must come from the same block that ran the tests (after the submodule update).
+  const testIdx = fn.indexOf("'--test'");
+  const successIdx = fn.indexOf('success: true');
+  assert.ok(testIdx !== -1 && successIdx > testIdx,
+    'success:true is no longer downstream of the node --test gate in applyUpdate');
+});
+
+// ── The five P7 update IPC channels are part of the endpoint-map guard above (it sweeps all channels),
+// but symmetric deletion (remove a channel from BOTH main and preload) would still pass that test. Pin
+// the names explicitly so the auto-update surface can't be silently dropped from both sides at once. ──
+test('P7 update IPC channels are present in main and preload', () => {
+  const required = ['get-app-config', 'update-check', 'update-apply', 'update-rollback', 'update-apply-progress'];
+  const main = read('showdown-ui/electron/main/index.ts');
+  const preload = read('showdown-ui/electron/preload/index.ts');
+  for (const ch of required) {
+    assert.ok(main.includes(`'${ch}'`), `index.ts no longer wires the '${ch}' IPC channel`);
+    assert.ok(preload.includes(`'${ch}'`), `preload/index.ts no longer wires the '${ch}' IPC channel`);
+  }
+});
+
+// ── checkUpdatesOnBoot is the config key that gates the whole UpdateScreen. It must stay in lockstep
+// across the example config (so users can discover it), the main process (which reads it), and the
+// docs. A key documented in one place but read under a different name silently disables the feature. ──
+test('checkUpdatesOnBoot config key is consistent across config, main, and docs', () => {
+  assert.match(read('config.example.json'), /"checkUpdatesOnBoot"\s*:/,
+    'config.example.json no longer advertises checkUpdatesOnBoot');
+  assert.match(read('showdown-ui/electron/main/index.ts'), /config\.checkUpdatesOnBoot\b/,
+    'index.ts no longer reads config.checkUpdatesOnBoot');
+  assert.ok(read('CLAUDE.md').includes('checkUpdatesOnBoot'),
+    'root CLAUDE.md no longer documents checkUpdatesOnBoot');
+  assert.ok(read('showdown-ui/CLAUDE.md').includes('checkUpdatesOnBoot'),
+    'showdown-ui/CLAUDE.md no longer documents checkUpdatesOnBoot');
+});
+
+// ── UpdateScreen.tsx is a phase state machine: every `kind` in the Phase union must have a render
+// branch, or a new phase added to the union renders nothing (blank screen on boot). Assert each kind
+// from the union appears in the component body as either an `if (phase.kind === '…')` guard or the
+// fall-through default's `// <kind>` marker comment (result-fail is the trailing default). ──
+test('UpdateScreen Phase union is exhaustively rendered', () => {
+  const src = read('showdown-ui/src/components/UpdateScreen.tsx');
+  const unionStart = src.indexOf('type Phase');
+  const unionEnd = src.indexOf('\n\n', unionStart);
+  const unionBlock = src.slice(unionStart, unionEnd);
+  const kinds = [...unionBlock.matchAll(/kind:\s*'([a-z-]+)'/g)].map((m) => m[1]);
+  assert.ok(kinds.length >= 6, `expected several Phase kinds, found ${kinds.length}`);
+
+  const body = src.slice(unionEnd);
+  const missing = kinds.filter((k) =>
+    !body.includes(`phase.kind === '${k}'`) &&   // explicit guard branch
+    !new RegExp(`//\\s*${k}\\b`).test(body));     // or the trailing fall-through marker comment
+  assert.deepEqual(missing, [],
+    `UpdateScreen Phase kind(s) with no render branch (blank-screen risk): ${missing.join(', ')}`);
+});

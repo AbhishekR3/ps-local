@@ -27,6 +27,10 @@ const browserOnly = {
   chrome: 'readonly', // WebExtension API
 };
 
+// No-op rule used to stub Codacy's external plugins (see the plugins block below) so their inline
+// `eslint-disable` directives resolve under the bare, plugin-free `eslint .` run without firing.
+const noop = { create: () => ({}) };
+
 const nodeGlobals = { ...universalGlobals, ...nodeOnly };
 const browserGlobals = { ...universalGlobals, ...browserOnly };
 const preloadGlobals = { ...universalGlobals, ...nodeOnly, ...browserOnly }; // Electron preload bridges both
@@ -54,9 +58,25 @@ const baseRules = {
 module.exports = [
   {
     ignores: [
-      'vendor/**', '**/node_modules/**', 'dist/**', 'logs/**',
+      'vendor/**', '**/node_modules/**', '**/dist/**', '**/out/**', 'logs/**',
       'helper/extension/data/**', // generated Monte-Carlo data bundle
     ],
+  },
+  {
+    // Several source files carry `/* eslint-disable security/… , no-unsanitized/… */` directives that
+    // silence Codacy's server-side plugins (eslint-plugin-security / -no-unsanitized). Those plugins
+    // are intentionally NOT a dependency here (this config is self-contained — see header). Under the
+    // bare `eslint .` run, an inline disable for an unknown rule is itself an error, so we register the
+    // referenced rules as no-op stubs: the directives resolve, the rules never fire, and the config
+    // stays plugin-free. Codacy still applies the real rules with its own plugin set.
+    plugins: {
+      security: { rules: { 'detect-object-injection': noop, 'detect-non-literal-fs-filename': noop } },
+      'no-unsanitized': { rules: { method: noop, property: noop } },
+    },
+    // The stubbed rules never fire, so their disable directives read as "unused". They are NOT unused —
+    // Codacy's real plugins consume them. Silence the unused-directive report so a clean local/CI run
+    // stays at exit 0 without deleting directives Codacy still needs.
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
   },
   {
     // Electron main process, orchestration scripts, and this config: CommonJS on Node.
