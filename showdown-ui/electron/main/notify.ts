@@ -1,10 +1,10 @@
-import { Notification, BrowserWindow } from 'electron'
+import { Notification } from 'electron'
 
 export interface TimerState { timerNotified: boolean }
 
-function showOsNotif(title: string, body: string, win: BrowserWindow | null): void {
+function showOsNotif(title: string, body: string, isFocused: () => boolean): void {
   if (!Notification.isSupported()) return
-  if (win !== null && win.isFocused()) return
+  if (isFocused()) return
   const notif = new Notification({ title, body })
   notif.show()
 }
@@ -23,33 +23,33 @@ function isUrgentTimer(msg: string): boolean {
   return t > 0 && t <= 60
 }
 
-function notifyMove(parts: string[], mySide: string, win: BrowserWindow | null): void {
-  if (parts[2] === undefined || parts[3] === undefined) return
+function notifyMove(parts: string[], mySide: string, isFocused: () => boolean): void {
+  if (parts.length < 4) return
   const sideMatch = /^(p\d)/.exec(parts[2])
   if (sideMatch === null || sideMatch[1] === mySide) return
   const poke = parts[2].split(': ')[1] || parts[2]
-  showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`, win)
+  showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`, isFocused)
 }
 
-function notifyTimer(state: TimerState, msg: string, win: BrowserWindow | null): void {
+function notifyTimer(state: TimerState, msg: string, isFocused: () => boolean): void {
   if (state.timerNotified || msg === '') return
   if (!isUrgentTimer(msg)) return
   state.timerNotified = true
-  showOsNotif('Pokémon Showdown — Timer!', msg, win)
+  showOsNotif('Pokémon Showdown — Timer!', msg, isFocused)
 }
 
 export function maybeNotify(
   mySide: string | null,
   frameData: string,
   state: TimerState,
-  win: BrowserWindow | null
+  isFocused: () => boolean
 ): void {
   if (mySide === null) return
   for (const line of frameData.split('\n')) {
     if (!line.startsWith('|')) continue
     const parts = line.split('|')
     const cmd = parts[1]
-    if (cmd === 'move') notifyMove(parts, mySide, win)
-    else if (cmd === 'inactive') notifyTimer(state, parts[2], win)
+    if (cmd === 'move') notifyMove(parts, mySide, isFocused)
+    else if (cmd === 'inactive') notifyTimer(state, parts[2], isFocused)
   }
 }

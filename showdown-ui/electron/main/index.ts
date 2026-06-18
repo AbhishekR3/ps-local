@@ -208,7 +208,7 @@ function handleFrame(frameData: string): void {
   }
   entry.lastSeen = Date.now()
   entry.tracker.feed(frameData)
-  maybeNotify(entry.tracker.state.mySide, frameData, entry, mainWindow)
+  maybeNotify(entry.tracker.state.mySide, frameData, entry, () => mainWindow?.isFocused() === true)
   entry.rawFrames.push(frameData)
 
   if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {
