@@ -205,7 +205,7 @@ function isUrgentTimer(msg: string): boolean {
   const sec = /(\d+)\s*second/i.exec(msg)?.[1]
   const min = /(\d+)\s*minute/i.exec(msg)?.[1]
   if (!sec && !min) return false
-  return (min ? +min * 60 : 0) + (sec ? +sec : 0) <= 60
+  return Number(sec ?? 0) + Number(min ?? 0) * 60 <= 60
 }
 
 function notifyMove(parts: string[], mySide: string) {

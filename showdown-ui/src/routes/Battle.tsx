@@ -24,7 +24,7 @@ export default function Battle({ helperOpen, resyncSignal }: { helperOpen: boole
   const didMountRef    = useRef(false)
   const [helperWidth, setHelperWidth] = useState(() => {
     const saved = localStorage.getItem('ps-helper-width')
-    return saved ? clampHelper(+saved) : clampHelper(window.innerWidth - 895)
+    return saved ? clampHelper(Number(saved)) : clampHelper(window.innerWidth - 895)
   })
 
   // Report the game container's rect to main so the embedded PS client (a
