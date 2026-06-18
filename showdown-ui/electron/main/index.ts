@@ -1,4 +1,5 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage, Notification } from 'electron'
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage } from 'electron'
+import { maybeNotify } from './notify'
 import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { homedir } from 'os'
@@ -194,45 +195,6 @@ function sweepStaleRooms(): void {
   }
 }
 
-function showOsNotif(title: string, body: string) {
-  if (!Notification.isSupported()) return
-  if (mainWindow?.isFocused()) return
-  const notif = new Notification({ title, body })
-  notif.show()
-}
-
-function isUrgentTimer(msg: string): boolean {
-  const sec = /(\d+)\s*second/i.exec(msg)?.[1]
-  const min = /(\d+)\s*minute/i.exec(msg)?.[1]
-  if (!sec && !min) return false
-  return Number(sec ?? 0) + Number(min ?? 0) * 60 <= 60
-}
-
-function notifyMove(parts: string[], mySide: string) {
-  if (!parts[2] || !parts[3]) return
-  const sideMatch = /^(p\d)/.exec(parts[2])
-  if (!sideMatch || sideMatch[1] === mySide) return
-  const poke = parts[2].split(': ')[1] || parts[2]
-  showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`)
-}
-
-function notifyTimer(entry: RoomEntry, msg: string) {
-  if (!msg || entry.timerNotified || !isUrgentTimer(msg)) return
-  entry.timerNotified = true
-  showOsNotif('Pokémon Showdown — Timer!', msg)
-}
-
-function maybeNotify(entry: RoomEntry, frameData: string) {
-  const mySide = entry.tracker.state.mySide
-  if (!mySide) return  // spectator or mySide not yet known from |request| frame
-  for (const line of frameData.split('\n')) {
-    if (!line.startsWith('|')) continue
-    const parts = line.split('|')
-    const cmd = parts[1]
-    if (cmd === 'move') notifyMove(parts, mySide)
-    else if (cmd === 'inactive') notifyTimer(entry, parts[2])
-  }
-}
 
 function handleFrame(frameData: string): void {
   const roomid = roomidOf(frameData)
@@ -246,7 +208,7 @@ function handleFrame(frameData: string): void {
   }
   entry.lastSeen = Date.now()
   entry.tracker.feed(frameData)
-  maybeNotify(entry, frameData)
+  maybeNotify(entry.tracker.state.mySide, frameData, entry, mainWindow)
   entry.rawFrames.push(frameData)
 
   if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {
