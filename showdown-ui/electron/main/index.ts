@@ -1,4 +1,5 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage } from 'electron'
+import { maybeNotify } from './notify'
 import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { homedir } from 'os'
@@ -138,7 +139,7 @@ function loadMovesData(): void {
 interface BattleState { turn: number; mySide: string | null; formatId?: string | null; [k: string]: unknown }
 // Per-room accumulators: roomid → { tracker, rawFrames, lastSeen }.
 // One tracker per room: feed() auto-resets on a new roomid, so a shared tracker would thrash.
-interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number }
+interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number; timerNotified: boolean }
 const rooms = new Map<string, RoomEntry>()
 
 const STALE_ROOM_MS      = 30 * 60 * 1000  // evict rooms idle longer than this (saved as INPROGRESS)
@@ -194,18 +195,20 @@ function sweepStaleRooms(): void {
   }
 }
 
+
 function handleFrame(frameData: string): void {
   const roomid = roomidOf(frameData)
   if (!roomid) return
 
   let entry = rooms.get(roomid)
   if (!entry) {
-    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now() }
+    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now(), timerNotified: false }
     rooms.set(roomid, entry)
     log.info(`room opened: ${roomid}`)
   }
   entry.lastSeen = Date.now()
   entry.tracker.feed(frameData)
+  maybeNotify(entry.tracker.state.mySide, frameData, entry, () => mainWindow?.isFocused() === true)
   entry.rawFrames.push(frameData)
 
   if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {

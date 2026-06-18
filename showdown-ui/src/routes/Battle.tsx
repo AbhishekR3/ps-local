@@ -21,7 +21,11 @@ const colHeader: CSSProperties = {
 export default function Battle({ helperOpen, resyncSignal }: { helperOpen: boolean; resyncSignal: number }) {
   const gameRef        = useRef<HTMLDivElement>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
-  const [helperWidth, setHelperWidth] = useState(() => clampHelper(window.innerWidth - 895))
+  const didMountRef    = useRef(false)
+  const [helperWidth, setHelperWidth] = useState(() => {
+    const saved = localStorage.getItem('ps-helper-width')
+    return saved ? clampHelper(Number(saved)) : clampHelper(window.innerWidth - 895)
+  })
 
   // Report the game container's rect to main so the embedded PS client (a
   // WebContentsView overlay) fills exactly this region, tracking resizes.
@@ -48,6 +52,13 @@ export default function Battle({ helperOpen, resyncSignal }: { helperOpen: boole
   // Collapsing/expanding the helper resizes the game region. Re-report psView bounds after React
   // commits the new width (rAF waits for layout) so the embedded client tracks it precisely.
   useEffect(() => { requestAnimationFrame(report) }, [helperOpen, report])
+
+  // Persist the last-used panel width across sessions. Skip the initial render so the saved
+  // value isn't immediately overwritten before the user has dragged anything.
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return }
+    localStorage.setItem('ps-helper-width', String(helperWidth))
+  }, [helperWidth])
 
   // When the mouse is over the psView during a drag, the renderer doesn't get
   // mousemove/mouseup — the psView preload relays them through main instead.
