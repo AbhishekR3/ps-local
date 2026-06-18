@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage } from 'electron'
+import { app, BrowserWindow, WebContentsView, ipcMain, shell, session, screen, nativeImage, Notification } from 'electron'
 import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { homedir } from 'os'
@@ -138,7 +138,7 @@ function loadMovesData(): void {
 interface BattleState { turn: number; mySide: string | null; formatId?: string | null; [k: string]: unknown }
 // Per-room accumulators: roomid → { tracker, rawFrames, lastSeen }.
 // One tracker per room: feed() auto-resets on a new roomid, so a shared tracker would thrash.
-interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number }
+interface RoomEntry { tracker: InstanceType<typeof BattleTracker>; rawFrames: string[]; lastSeen: number; timerNotified: boolean }
 const rooms = new Map<string, RoomEntry>()
 
 const STALE_ROOM_MS      = 30 * 60 * 1000  // evict rooms idle longer than this (saved as INPROGRESS)
@@ -194,18 +194,53 @@ function sweepStaleRooms(): void {
   }
 }
 
+function showOsNotif(title: string, body: string) {
+  if (!Notification.isSupported()) return
+  if (mainWindow?.isFocused()) return
+  new Notification({ title, body }).show()
+}
+
+function isUrgentTimer(msg: string): boolean {
+  const sec = /(\d+)\s*second/i.exec(msg)
+  const min = /(\d+)\s*minute/i.exec(msg)
+  if (!sec && !min) return false
+  const total = (min ? parseInt(min[1]) * 60 : 0) + (sec ? parseInt(sec[1]) : 0)
+  return total <= 60
+}
+
+function maybeNotify(entry: RoomEntry, frameData: string) {
+  const mySide = entry.tracker.state.mySide
+  if (!mySide) return  // spectator or not yet known
+  for (const line of frameData.split('\n')) {
+    if (!line.startsWith('|')) continue
+    const parts = line.split('|')
+    const cmd = parts[1]
+    if (cmd === 'move' && parts[2] && parts[3]) {
+      const sideMatch = /^(p\d)/.exec(parts[2])
+      if (sideMatch && sideMatch[1] !== mySide) {
+        const poke = parts[2].split(': ')[1] || parts[2]
+        showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`)
+      }
+    } else if (cmd === 'inactive' && parts[2] && !entry.timerNotified && isUrgentTimer(parts[2])) {
+      entry.timerNotified = true
+      showOsNotif('Pokémon Showdown — Timer!', parts[2])
+    }
+  }
+}
+
 function handleFrame(frameData: string): void {
   const roomid = roomidOf(frameData)
   if (!roomid) return
 
   let entry = rooms.get(roomid)
   if (!entry) {
-    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now() }
+    entry = { tracker: new BattleTracker(), rawFrames: [], lastSeen: Date.now(), timerNotified: false }
     rooms.set(roomid, entry)
     log.info(`room opened: ${roomid}`)
   }
   entry.lastSeen = Date.now()
   entry.tracker.feed(frameData)
+  maybeNotify(entry, frameData)
   entry.rawFrames.push(frameData)
 
   if (entry.rawFrames.length > MAX_FRAMES_PER_ROOM) {
