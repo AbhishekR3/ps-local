@@ -197,34 +197,40 @@ function sweepStaleRooms(): void {
 function showOsNotif(title: string, body: string) {
   if (!Notification.isSupported()) return
   if (mainWindow?.isFocused()) return
-  new Notification({ title, body }).show()
+  const notif = new Notification({ title, body })
+  notif.show()
 }
 
 function isUrgentTimer(msg: string): boolean {
-  const sec = /(\d+)\s*second/i.exec(msg)
-  const min = /(\d+)\s*minute/i.exec(msg)
+  const sec = /(\d+)\s*second/i.exec(msg)?.[1]
+  const min = /(\d+)\s*minute/i.exec(msg)?.[1]
   if (!sec && !min) return false
-  const total = (min ? parseInt(min[1]) * 60 : 0) + (sec ? parseInt(sec[1]) : 0)
-  return total <= 60
+  return (min ? +min * 60 : 0) + (sec ? +sec : 0) <= 60
+}
+
+function notifyMove(parts: string[], mySide: string) {
+  if (!parts[2] || !parts[3]) return
+  const sideMatch = /^(p\d)/.exec(parts[2])
+  if (!sideMatch || sideMatch[1] === mySide) return
+  const poke = parts[2].split(': ')[1] || parts[2]
+  showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`)
+}
+
+function notifyTimer(entry: RoomEntry, msg: string) {
+  if (!msg || entry.timerNotified || !isUrgentTimer(msg)) return
+  entry.timerNotified = true
+  showOsNotif('Pokémon Showdown — Timer!', msg)
 }
 
 function maybeNotify(entry: RoomEntry, frameData: string) {
   const mySide = entry.tracker.state.mySide
-  if (!mySide) return  // spectator or not yet known
+  if (!mySide) return  // spectator or mySide not yet known from |request| frame
   for (const line of frameData.split('\n')) {
     if (!line.startsWith('|')) continue
     const parts = line.split('|')
     const cmd = parts[1]
-    if (cmd === 'move' && parts[2] && parts[3]) {
-      const sideMatch = /^(p\d)/.exec(parts[2])
-      if (sideMatch && sideMatch[1] !== mySide) {
-        const poke = parts[2].split(': ')[1] || parts[2]
-        showOsNotif('Pokémon Showdown', `${poke} used ${parts[3]}!`)
-      }
-    } else if (cmd === 'inactive' && parts[2] && !entry.timerNotified && isUrgentTimer(parts[2])) {
-      entry.timerNotified = true
-      showOsNotif('Pokémon Showdown — Timer!', parts[2])
-    }
+    if (cmd === 'move') notifyMove(parts, mySide)
+    else if (cmd === 'inactive') notifyTimer(entry, parts[2])
   }
 }
 
