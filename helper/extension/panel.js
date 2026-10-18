@@ -1,6 +1,6 @@
 import { BattleTracker } from './lib/parser.js';
 import { resolveSetsKey } from './lib/lookup.js';
-import { loadCore, loadSets, loadItems, loadAbilities, loadTera, loadStats, loadMovesFreq } from './lib/data.js';
+import { loadCore, loadSets, loadItems, loadAbilities, loadTera, loadStats, loadMovesFreq, loadJoint } from './lib/data.js';
 import { renderBattle } from './lib/render.js';
 import { api } from './lib/api.js';
 
@@ -14,6 +14,7 @@ let currentItems = null;     // predicted-item table for the current format (may
 let currentAbilities = null; // predicted-ability table for the current format (may be null)
 let currentTeras = null;     // tera-type frequency table for the current format (may be null)
 let currentStats = null;     // pre-nature stat min/max table for the current format (may be null)
+let currentJoint = null; // joint item/ability/tera/moves table (gen9 only; may be null)
 let currentMovesFreq = null; // move-frequency table for the current format (may be null)
 let currentSetsKey = null;
 let renderQueued = false;
@@ -47,8 +48,8 @@ async function ensureSets() {
 	const key = resolveSetsKey(tracker.state.formatId);
 	if (key !== currentSetsKey) {
 		currentSetsKey = key;
-		[currentSets, currentItems, currentAbilities, currentTeras, currentStats, currentMovesFreq] = await Promise.all([
-			loadSets(key), loadItems(key), loadAbilities(key), loadTera(key), loadStats(key), loadMovesFreq(key),
+		[currentSets, currentItems, currentAbilities, currentTeras, currentStats, currentMovesFreq, currentJoint] = await Promise.all([
+			loadSets(key), loadItems(key), loadAbilities(key), loadTera(key), loadStats(key), loadMovesFreq(key), loadJoint(key),
 		]);
 	}
 }
@@ -66,7 +67,7 @@ function scheduleRender() {
 function render() {
 	const s = tracker.state;
 	console.log('[PSH panel] render formatId=' + s.formatId + ' tier=' + s.tier + ' core=' + !!core);
-	const fmt = { sets: currentSets, items: currentItems, abilities: currentAbilities, teras: currentTeras, movesFreq: currentMovesFreq, stats: currentStats };
+	const fmt = { sets: currentSets, items: currentItems, abilities: currentAbilities, teras: currentTeras, movesFreq: currentMovesFreq, stats: currentStats, joint: currentJoint };
 	const { format, html } = renderBattle(s, core, fmt, { tapWarning });
 	$format.textContent = format;
 	$content.innerHTML = html; // eslint-disable-line no-unsanitized/property -- html from our own renderBattle(), never user input

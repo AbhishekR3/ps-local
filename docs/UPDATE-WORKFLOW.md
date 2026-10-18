@@ -64,7 +64,7 @@ panel's predictions current:
 
 ```bash
 cd vendor/pokemon-showdown && npm run build && cd ../..
-cd helper && node build-data.js
+cd helper && node build-data.js   # ~1.5 h at 20000 rounds/species; PS_ONLY=gen9,gen9doubles for a quick refresh
 git add helper/extension/data/
 git commit -m "chore: regenerate helper data bundle from upstream"
 ```

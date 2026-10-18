@@ -107,7 +107,8 @@ function moveChip(m, hideFreq = false) {
 }
 
 function breakdownCard(species, reveal, core, fmt, meta, activeHp = null) {
-	const b = getBreakdown(species, { pokedex: core.pokedex, moves: core.moves, sets: fmt.sets, items: fmt.items, abilities: fmt.abilities, teras: fmt.teras, movesFreq: fmt.movesFreq }, reveal?.moves);
+	const b = getBreakdown(species, { pokedex: core.pokedex, moves: core.moves, sets: fmt.sets, items: fmt.items, abilities: fmt.abilities, teras: fmt.teras, movesFreq: fmt.movesFreq, joint: fmt.joint },
+		reveal?.moves, { item: reveal?.item, ability: reveal?.ability, tera: reveal?.tera });
 	const abilityDesc = (name) => core.abilitiesDesc?.[idOf(name)]?.description ?? '';
 	let stats = '';
 	if (b.baseStats) {

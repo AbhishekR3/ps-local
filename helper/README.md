@@ -63,11 +63,13 @@ The extension ships static JSON generated from the parent repo. Regenerate it wh
 upstream PS data changes:
 
 ```bash
-# 1. Compile the simulator — the item step imports the real team generator from dist/sim.
-npm run build            # in the repo root
+# 1. Compile the simulator — the Monte-Carlo step imports the real team generator from dist/sim.
+cd vendor/pokemon-showdown && npm run build && cd ../..
 
-# 2. Regenerate the bundle.
-cd battle-helper && node build-data.js
+# 2. Regenerate the bundle (~1.5 h at the default 20000 rounds/species).
+cd helper && node build-data.js
+#    Env knobs: PS_ROUNDS=<n>  PS_ONLY=gen9,gen9doubles (only replace those formats)
+#               PS_JOINT_KEYS=<keys>  PS_JOINT_MIN=<n> (fold joint combos seen < n times into `other`)
 ```
 
 `build-data.js`:
@@ -75,14 +77,20 @@ cd battle-helper && node build-data.js
 - imports `data/pokedex.ts` and `data/moves.ts` directly (Node ≥ 22 strips the data-only TS
   types) → trimmed `pokedex.json` / `moves.json`;
 - copies the `random-battles` set files into `extension/data/sets/`;
-- **predicted items** — runs the real generator (`Teams.getGenerator(format).randomSet(...)`,
-  200×/species) and tallies the chosen item keyed `species → role → item` into
-  `items/<key>.json`. Random-battle items aren't stored statically anywhere (they're chosen at
-  generation time from the rolled set), so we sample the generator to learn the distribution;
-  keying by role lets the prediction sharpen as revealed moves narrow the set. This step needs
-  the compiled `dist/sim`, hence the `npm run build` prerequisite. (gen1 has no items and is
-  skipped. Sampling uses empty team-details, so rare weather/team-context item branches aren't
-  reflected.)
+- **Monte-Carlo tables** — runs the real generator (`Teams.getGenerator(format).randomSet(...)`,
+  20000×/species) and tallies, keyed `species → role → value`: `items/`, `abilities/`, `tera/`,
+  `moves-freq/` and `stats/`. These are chosen at generation time, not stored statically, so we
+  sample the generator. Sampling uses empty team-details, so rare weather/team-context branches
+  aren't reflected. Needs the compiled `dist/sim`.
+- **joint table** (`joint/gen9.json`, `joint/gen9doubles.json`) — every distinct generated
+  `(item, ability, tera, 4 moves)` combination per species/role with its count, dictionary-encoded
+  (rows are `[itemIdx, abilityIdx, teraIdx|-1, count, ...moveIdx]`). `lookup.js` filters it by every
+  confirmed fact (revealed moves, item, ability, tera) so each fact eliminates and reweights the
+  others; if a fact contradicts every combination (e.g. a Tricked item) it is relaxed rather than
+  collapsing to nothing. Tera types are rolled first and moves are culled around them, so tera and
+  moveset are strongly linked (see the generator's `getTeraType` / `stabtera` logic).
+- Output dirs are built in a `.stage/` directory and swapped in only after the whole run succeeds, so
+  stale or partial files never remain.
 
 ## Load the extension
 

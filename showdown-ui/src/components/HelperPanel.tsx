@@ -12,7 +12,7 @@ import { loadCore, loadFormat, type Core, type FormatData } from '../lib/data'
 import { renderBattle, waitingHtml } from '../lib/render'
 import type { PsStatus } from '../global'
 
-const EMPTY_FMT: FormatData = { sets: null, items: null, abilities: null, teras: null, stats: null, movesFreq: null }
+const EMPTY_FMT: FormatData = { sets: null, items: null, abilities: null, teras: null, stats: null, movesFreq: null, joint: null }
 
 const STALL_MS = 5000  // frames arriving but nothing parsed within this window → auto re-sync once
 

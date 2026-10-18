@@ -12,6 +12,7 @@ const _abilitiesCache = new Map();
 const _teraCache = new Map();
 const _statsCache = new Map();
 const _movesFreqCache = new Map();
+const _jointCache = new Map();
 
 async function fetchJson(url) {
 	try {
@@ -126,4 +127,19 @@ export async function loadStats(key) {
 	}
 	_statsCache.set(key, stats);
 	return stats;
+}
+
+// Returns the joint (item, ability, tera, moves) table for a resolved key, or null if unavailable.
+// Shape: { speciesId: { dict: string[], roles: { role: { total, other, rows } } } } — see build-data.js.
+export async function loadJoint(key) {
+	if (!key) return null;
+	if (_jointCache.has(key)) return _jointCache.get(key);
+	let joint = null;
+	try {
+		joint = await fetchJson(base(`joint/${key}.json`));
+	} catch {
+		joint = null; // only shipped for formats with tera data
+	}
+	_jointCache.set(key, joint);
+	return joint;
 }

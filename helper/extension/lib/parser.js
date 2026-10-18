@@ -78,10 +78,11 @@ export class BattleTracker {
 		const id = toID(species);
 		if (!id) return null;
 		const bucket = this.state.revealed[side] || (this.state.revealed[side] = {});
-		const rec = bucket[id] || (bucket[id] = { species, ability: null, item: null, moves: new Set(), fainted: false, level: null });
+		const rec = bucket[id] || (bucket[id] = { species, ability: null, item: null, moves: new Set(), fainted: false, level: null, tera: null });
 		if (extra.ability) rec.ability = extra.ability;
 		if (extra.item !== undefined) rec.item = extra.item;
 		if (extra.level) rec.level = extra.level;
+		if (extra.tera) rec.tera = extra.tera;
 		return rec;
 	}
 
@@ -221,7 +222,10 @@ export class BattleTracker {
 			}
 			case '-terastallize': {
 				const slot = this._slotOf(parts[2]);
-				if (slot && s.active[slot]) s.active[slot].tera = parts[3];
+				if (slot && s.active[slot]) {
+					s.active[slot].tera = parts[3];
+					this._reveal(parseIdent(parts[2]).side, s.active[slot].species, { tera: parts[3] });
+				}
 				break;
 			}
 			case '-ability': {

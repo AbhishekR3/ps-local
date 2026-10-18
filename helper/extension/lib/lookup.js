@@ -172,14 +172,92 @@ function predictAbilities(abilitiesData, id, relevantSets) {
 	return largestRemainderPct(sorted, grand).slice(0, 3).map((r) => ({ ability: r.key, pct: r.pct }));
 }
 
+
+// --- Joint elimination -----------------------------------------------------------------------
+// data.joint[species] = { dict, roles: { role: { total, other, rows } } } (see build-data.js).
+// Each row is one distinct generated set: [itemIdx, abilityIdx, teraIdx|-1, count, ...moveIdx].
+// Conditioning on every revealed fact (moves seen, item, ability, tera) keeps only the rows that
+// could still be the opponent's set, so each fact eliminates and reweights all the others.
+
+// Rows of the given roles consistent with the facts. Returns [{item, ability, tera, moves, count, role}].
+function jointRows(entry, roles, revealedIds, facts) {
+	const out = [];
+	const { dict, roles: byRole } = entry;
+	const wantItem = facts.item ? toID(facts.item) : null;
+	const wantAbility = facts.ability ? toID(facts.ability) : null;
+	const wantTera = facts.tera ? toID(facts.tera) : null;
+	for (const role of roles) {
+		const rd = byRole[role];
+		if (!rd) continue;
+		for (const row of rd.rows) {
+			const item = dict[row[0]];
+			if (wantItem && toID(item) !== wantItem) continue;
+			const ability = dict[row[1]];
+			if (wantAbility && toID(ability) !== wantAbility) continue;
+			const tera = row[2] < 0 ? null : dict[row[2]];
+			if (wantTera && toID(tera || '') !== wantTera) continue;
+			const moves = row.slice(4).map((i) => dict[i]);
+			if (revealedIds.length && !revealedIds.every((m) => moves.includes(m))) continue;
+			out.push({ item, ability, tera, moves, count: row[3], role });
+		}
+	}
+	return out;
+}
+
+function topPct(rows, field, n, outKey) {
+	const totals = {};
+	let grand = 0;
+	for (const r of rows) {
+		const k = r[field];
+		if (k == null) continue;
+		totals[k] = (totals[k] || 0) + r.count;
+		grand += r.count;
+	}
+	if (!grand) return [];
+	const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+	return largestRemainderPct(sorted, grand).slice(0, n).map((r) => ({ [outKey]: r.key, pct: r.pct }));
+}
+
+// Probability (0-100) that each move is in the set, over the surviving rows.
+function moveProbs(rows) {
+	let grand = 0;
+	const counts = {};
+	for (const r of rows) {
+		grand += r.count;
+		for (const m of r.moves) counts[m] = (counts[m] || 0) + r.count;
+	}
+	return { grand, counts };
+}
+
+// Resolve the joint prediction, relaxing unreliable facts when nothing matches: a swapped item
+// (Trick/Thief) or ability (Trace/Skill Swap) can legitimately contradict the generated set, and
+// we must never silently collapse to nothing. Returns null when there is no joint data/match.
+function jointPrediction(jointData, id, relevantSets, revealedIds, facts) {
+	const entry = jointData?.[id];
+	if (!entry) return null;
+	const roles = [...new Set(relevantSets.flatMap((s) => s._roles || [s.role]))];
+	const attempts = [facts, { tera: facts.tera }, {}];
+	const tried = new Set();
+	for (const f of attempts) {
+		const k = JSON.stringify([f.item || '', f.ability || '', f.tera || '']);
+		if (tried.has(k)) continue;
+		tried.add(k);
+		const rows = jointRows(entry, roles, revealedIds, f);
+		if (rows.length) return { rows, relaxed: tried.size > 1 };
+	}
+	return null;
+}
+
 /**
  * Build the full breakdown for one Pokemon.
  * @param {string} species  raw species name or id
- * @param {{pokedex:Object, moves:Object, sets:Object, items?:Object, abilities?:Object, teras?:Object, movesFreq?:Object}} data
+ * @param {{pokedex:Object, moves:Object, sets:Object, items?:Object, abilities?:Object, teras?:Object, movesFreq?:Object, joint?:Object}} data
  * @param {Set<string>|string[]|null} revealedMoves  move ids the opponent has used (narrows sets)
+ * @param {{item?:string|null, ability?:string|null, tera?:string|null}} [facts]  other confirmed facts; with `data.joint`
+ *   they eliminate/reweight every prediction (items, abilities, tera, moves) via the joint distribution
  * @returns {Object} breakdown (always returns dex info even if no set data exists)
  */
-export function getBreakdown(species, data, revealedMoves = null) {
+export function getBreakdown(species, data, revealedMoves = null, facts = {}) {
 	const id = toID(species);
 	const dex = data.pokedex[id] || null;
 	// Cosmetic/alternate formes (Maushold-Four, Tatsugiri-Stretchy, …) ship no random-battle data under
@@ -255,6 +333,30 @@ export function getBreakdown(species, data, revealedMoves = null) {
 	}
 	const dexAbilities = dex ? Object.values(dex.abilities) : [];
 
+	let predictedItems = predictItems(data.items, dataId, relevant);
+	let predictedAbilities = predictAbilities(data.abilities, dataId, relevant);
+	let predictedTeras = predictTeras(data.teras, dataId, relevant);
+	let jointInfo = null;
+	const jp = jointPrediction(data.joint, dataId, relevant, [...revealed], facts || {});
+	if (jp) {
+		predictedItems = topPct(jp.rows, 'item', 3, 'item');
+		predictedAbilities = topPct(jp.rows, 'ability', 3, 'ability');
+		predictedTeras = topPct(jp.rows, 'tera', 5, 'teraType');
+		// Conditional move odds, so the UI shows how revealed facts reshape the rest of the set.
+		for (const set of sets) {
+			const own = jp.rows.filter((r) => (set._roles || [set.role]).includes(r.role));
+			if (!own.length) continue;
+			const { grand, counts } = moveProbs(own);
+			for (const mv of set.moves) mv.freq = Math.round(((counts[mv.id] || 0) / grand) * 100);
+		}
+		const { grand, counts } = moveProbs(jp.rows);
+		const predictedMoves = Object.entries(counts)
+			.filter(([m]) => !revealed.has(m))
+			.sort((a, b) => b[1] - a[1])
+			.map(([m, c]) => ({ move: m, pct: Math.round((c / grand) * 100) }));
+		jointInfo = { combos: jp.rows.length, relaxed: jp.relaxed, predictedMoves };
+	}
+
 	return {
 		id: dataId,
 		name: dex ? dex.name : species,
@@ -270,9 +372,10 @@ export function getBreakdown(species, data, revealedMoves = null) {
 		revealedCount,
 		lowConfidence,
 		confirmed,
-		predictedItems: predictItems(data.items, dataId, relevant),
-		predictedAbilities: predictAbilities(data.abilities, dataId, relevant),
-		predictedTeras: predictTeras(data.teras, dataId, relevant),
+		predictedItems,
+		predictedAbilities,
+		predictedTeras,
+		joint: jointInfo,
 		found: !!entry,
 	};
 }
